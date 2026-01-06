@@ -25,9 +25,9 @@ def _get_attr(obj, name: str, default: str = 'TBA') -> str:
 
 def format_table(schedules: List) -> str:
     """Format schedules as ASCII table"""
-    lines = ["+" + "-" * 68 + "+"]
-    lines.append(f"|{'VESSEL':<18}|{'VOYAGE':<8}|{'ETD':<20}|{'ETA':<18}|")
-    lines.append("+" + "-" * 68 + "+")
+    lines = ["+" + "-" * 76 + "+"]
+    lines.append(f"|{'VESSEL':<18}|{'VOYAGE':<8}|{'ETD':<24}|{'ETA':<22}|")
+    lines.append("+" + "-" * 76 + "+")
 
     for s in schedules:
         vessel = _get_attr(s, 'vessel')
@@ -37,11 +37,11 @@ def format_table(schedules: List) -> str:
 
         v = vessel[:16]
         voy = voyage[:6]
-        etd_str = etd[:18]
-        eta_str = eta[:16]
-        lines.append(f"|{v:<18}|{voy:<8}|{etd_str:<20}|{eta_str:<18}|")
+        etd_str = etd[:22]
+        eta_str = eta[:20]
+        lines.append(f"|{v:<18}|{voy:<8}|{etd_str:<24}|{eta_str:<22}|")
 
-    lines.append("+" + "-" * 68 + "+")
+    lines.append("+" + "-" * 76 + "+")
     return '\n'.join(lines)
 
 

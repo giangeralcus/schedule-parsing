@@ -43,6 +43,43 @@ class Schedule:
             (self.etd and self.etd != "TBA" or self.eta and self.eta != "TBA")
         )
 
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """Try to parse date string into datetime"""
+        if not date_str or date_str == "TBA":
+            return None
+
+        formats = [
+            "%d %b %Y, %H:%M",  # "16 Jan 2026, 19:00"
+            "%d %b %Y %H:%M",   # "16 Jan 2026 19:00"
+            "%d %b, %H:%M",     # "16 Jan, 19:00"
+            "%d %b %H:%M",      # "16 Jan 19:00"
+            "%d %B %Y, %H:%M",  # "16 January 2026, 19:00"
+            "%d %B %Y",         # "16 January 2026"
+            "%d %b %Y",         # "16 Jan 2026"
+            "%d %b",            # "16 Jan"
+        ]
+
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str.strip(), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def validate_dates(self) -> bool:
+        """Check if ETD is before ETA (logically correct)"""
+        etd_date = self._parse_date(self.etd)
+        eta_date = self._parse_date(self.eta)
+
+        if etd_date and eta_date:
+            return etd_date <= eta_date
+        return True  # Can't validate if dates not parseable
+
+    def swap_dates_if_needed(self):
+        """Swap ETD and ETA if they appear to be reversed"""
+        if not self.validate_dates():
+            self.etd, self.eta = self.eta, self.etd
+
     def __str__(self) -> str:
         return f"{self.vessel} / {self.voyage}"
 

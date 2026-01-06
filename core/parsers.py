@@ -331,6 +331,7 @@ def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -
         List of Schedule objects
     """
     full_text = '\n'.join(text_lines)
+    schedules = []
 
     # If carrier hint provided, try that parser first
     if carrier_hint:
@@ -338,13 +339,18 @@ def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -
             if parser.name == carrier_hint or carrier_hint in parser.name:
                 schedules = parser.parse(text_lines)
                 if schedules:
-                    return schedules
+                    break
 
-    # Try each parser in order
-    for parser in PARSERS:
-        if parser.can_parse(full_text):
-            schedules = parser.parse(text_lines)
-            if schedules:
-                return schedules
+    # Try each parser in order if no schedules yet
+    if not schedules:
+        for parser in PARSERS:
+            if parser.can_parse(full_text):
+                schedules = parser.parse(text_lines)
+                if schedules:
+                    break
 
-    return []
+    # Validate and fix dates (swap if ETD > ETA)
+    for schedule in schedules:
+        schedule.swap_dates_if_needed()
+
+    return schedules
