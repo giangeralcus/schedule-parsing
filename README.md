@@ -2,11 +2,15 @@
 
 Offline shipping schedule parser with OCR - extract vessel schedules from screenshots.
 
+> **⚠️ Status: Dalam Tahap Pengembangan**
+> Project ini masih dalam tahap pengembangan aktif. Fitur dan fungsionalitas dapat berubah sewaktu-waktu.
+
 ## About
 
 **Author:** Gian Geralcus
 **Created:** 06 January 2026
 **Project Type:** Personal Project
+**Status:** 🚧 Development
 
 ---
 
