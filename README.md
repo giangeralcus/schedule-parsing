@@ -10,6 +10,11 @@ Offline shipping schedule parser with OCR - extract vessel schedules from screen
 
 This tool streamlines the daily workflow of managing vessel schedules by automatically extracting schedule data from shipping line screenshots. What seems like a small efficiency improvement compounds over time, significantly reducing manual data entry and potential errors in ship scheduling operations.
 
+## Quick Start Guides
+
+- **[macOS Setup Guide](docs/README-MACOS.md)** - Full installation & usage guide untuk Mac
+- **[Windows Setup Guide](docs/README-WINDOWS.md)** - Full installation & usage guide untuk Windows
+
 ## Features
 
 - **Drag & Drop GUI** - Modern dark theme interface
