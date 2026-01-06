@@ -2,6 +2,14 @@
 
 Offline shipping schedule parser with OCR - extract vessel schedules from screenshots.
 
+## About
+
+**Author:** Gian Geralcus
+**Created:** 06 January 2026
+**Purpose:** Memudahkan small performance workflow yang dapat memiliki efek jangka panjang dalam pengurusan scheduling kapal - baik yang delay, non-delay, maupun conjunction.
+
+This tool streamlines the daily workflow of managing vessel schedules by automatically extracting schedule data from shipping line screenshots. What seems like a small efficiency improvement compounds over time, significantly reducing manual data entry and potential errors in ship scheduling operations.
+
 ## Features
 
 - **Drag & Drop GUI** - Modern dark theme interface
@@ -16,14 +24,29 @@ Offline shipping schedule parser with OCR - extract vessel schedules from screen
 ### Prerequisites
 
 1. **Python 3.10+**
-2. **Tesseract OCR** - [Download](https://github.com/UB-Mannheim/tesseract/wiki)
-   - Install to `C:\Program Files\Tesseract-OCR\`
+2. **Tesseract OCR**
 
-### Install Dependencies
+### Quick Setup (Recommended)
 
 ```bash
+# macOS/Linux
+./setup/install_dependencies.sh
+
+# Windows
 pip install -r requirements.txt
 ```
+
+### Install Tesseract OCR
+
+**macOS:**
+```bash
+./setup/install_tesseract_mac.sh
+# or manually: brew install tesseract
+```
+
+**Windows:**
+- Download from [UB-Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
+- Install to `C:\Program Files\Tesseract-OCR\`
 
 ### Optional: Install ttkbootstrap for modern UI
 
@@ -36,9 +59,14 @@ pip install ttkbootstrap
 ### GUI Mode (Recommended)
 
 ```bash
+# Direct
 python schedule_gui.py
-# or
-run_gui.bat
+
+# macOS/Linux
+./scripts/run_gui.sh
+
+# Windows
+scripts\run_gui.bat
 ```
 
 1. Drag & drop screenshot onto the window
@@ -48,7 +76,11 @@ run_gui.bat
 ### CLI Mode
 
 ```bash
+# Direct
 python schedule_parser.py
+
+# macOS/Linux
+./scripts/run_cli.sh
 ```
 
 Options:
@@ -81,25 +113,49 @@ Example: `m_schedule_jan.png` → Parsed as MAERSK
 ## Folder Structure
 
 ```
-SCHEDULE/
-├── 1_screenshots/     # Drop screenshots here
-├── 2_hasil/           # Output files (organized by carrier)
+schedule-parsing/
+│
+├── 1_screenshots/        # [INPUT] Drop screenshots here
+├── 2_hasil/              # [OUTPUT] Parsed results (by carrier)
 │   ├── MAERSK/
 │   ├── OOCL/
 │   └── CMA-CGM/
-├── core/              # Configuration, models, parsers
-├── processors/        # Image & OCR processing
-├── formatters/        # Output formatting
-├── schedule_gui.py    # GUI application
-├── schedule_parser.py # CLI application
-└── requirements.txt
+│
+├── schedule_gui.py       # Main GUI application
+├── schedule_parser.py    # Main CLI application
+├── requirements.txt      # Python dependencies
+│
+├── core/                 # Core logic modules
+│   ├── config.py         # Configuration & carrier mappings
+│   ├── models.py         # Data models (Schedule, ParseResult)
+│   └── parsers.py        # Carrier-specific parsers
+│
+├── processors/           # Processing modules
+│   ├── image.py          # Image preprocessing
+│   └── ocr.py            # Tesseract OCR wrapper
+│
+├── formatters/           # Output modules
+│   └── output.py         # Table/email formatting
+│
+├── scripts/              # Run scripts (cross-platform)
+│   ├── run_gui.sh        # macOS/Linux GUI launcher
+│   ├── run_gui.bat       # Windows GUI launcher
+│   └── run_cli.sh        # macOS/Linux CLI launcher
+│
+└── setup/                # Installation & build scripts
+    ├── install_dependencies.sh   # Install Python packages
+    ├── install_tesseract_mac.sh  # Install Tesseract (macOS)
+    ├── install_tesseract.bat     # Install Tesseract (Windows)
+    └── build_exe.bat             # Build standalone .exe
 ```
 
-## Build Standalone EXE
+## Build Standalone EXE (Windows)
 
 ```bash
-build_exe.bat
-# or
+# Using script
+setup\build_exe.bat
+
+# Manual
 pyinstaller --onefile --windowed --name ScheduleParser schedule_gui.py
 ```
 
