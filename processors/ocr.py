@@ -1,0 +1,151 @@
+"""
+OCR text extraction with confidence scoring
+"""
+import re
+import os
+from typing import List, Dict, Optional, Tuple
+from .image import ImageProcessor
+
+# Check for Tesseract
+HAS_OCR = False
+pytesseract = None
+
+try:
+    import pytesseract as _pytesseract
+    pytesseract = _pytesseract
+
+    # Find Tesseract executable
+    tesseract_paths = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'/usr/bin/tesseract',
+    ]
+    for path in tesseract_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            HAS_OCR = True
+            break
+except ImportError:
+    pass
+
+
+class OCRProcessor:
+    """OCR text extraction with multiple passes and confidence scoring"""
+
+    def __init__(self, confidence_threshold: int = 30):
+        self.confidence_threshold = confidence_threshold
+        self.image_processor = ImageProcessor()
+        self.has_ocr = HAS_OCR
+        self.psm_modes = [6, 11, 4]  # Different page segmentation modes
+
+    def is_available(self) -> bool:
+        """Check if OCR is available"""
+        return self.has_ocr
+
+    def extract_text(self, image_path: str) -> List[str]:
+        """
+        Extract text from image using multiple OCR passes
+
+        Returns:
+            List of cleaned text lines
+        """
+        if not self.has_ocr:
+            return []
+
+        if not os.path.exists(image_path):
+            return []
+
+        # Preprocess image
+        img = self.image_processor.preprocess(image_path)
+        if img is None:
+            return []
+
+        # Multi-pass OCR with different PSM modes
+        all_text = []
+        for psm in self.psm_modes:
+            try:
+                config = f'--oem 3 --psm {psm}'
+                text = pytesseract.image_to_string(img, config=config)
+
+                for line in text.split('\n'):
+                    line = self._clean_text(line)
+                    if line and len(line) > 2 and line not in all_text:
+                        all_text.append(line)
+            except Exception:
+                continue
+
+        return all_text
+
+    def extract_with_confidence(self, image_path: str) -> List[Dict]:
+        """
+        Extract text with confidence scores
+
+        Returns:
+            List of dicts with text, confidence, and bounding box
+        """
+        if not self.has_ocr:
+            return []
+
+        img = self.image_processor.preprocess(image_path)
+        if img is None:
+            return []
+
+        try:
+            from pytesseract import Output
+            data = pytesseract.image_to_data(img, output_type=Output.DICT)
+
+            results = []
+            for i in range(len(data['text'])):
+                text = data['text'][i].strip()
+                conf = int(data['conf'][i])
+
+                if text and conf >= self.confidence_threshold:
+                    results.append({
+                        'text': self._clean_text(text),
+                        'confidence': conf,
+                        'box': (
+                            data['left'][i],
+                            data['top'][i],
+                            data['left'][i] + data['width'][i],
+                            data['top'][i] + data['height'][i]
+                        )
+                    })
+
+            return results
+        except Exception:
+            return []
+
+    def _clean_text(self, text: str) -> str:
+        """Clean OCR artifacts from text"""
+        text = text.strip()
+        if not text:
+            return ""
+
+        # Fix common OCR errors in times
+        text = re.sub(r'(\d{1,2})\.(\d{2})(?!\d)', r'\1:\2', text)
+        text = re.sub(r'(\d{1,2}),(\d{2})(?!\d)', r'\1:\2', text)
+
+        # Fix month spacing
+        text = re.sub(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{4})', r'\1 \2', text)
+
+        # Remove garbage characters but keep essential punctuation
+        text = re.sub(r'[^A-Za-z0-9\s\-\.,:\/]', '', text)
+
+        # Clean up multiple spaces
+        text = re.sub(r'\s+', ' ', text)
+
+        return text.strip()
+
+    def get_raw_text(self, image_path: str) -> str:
+        """Get raw OCR text without processing"""
+        if not self.has_ocr:
+            return ""
+
+        img = self.image_processor.preprocess(image_path)
+        if img is None:
+            return ""
+
+        try:
+            return pytesseract.image_to_string(img)
+        except Exception:
+            return ""

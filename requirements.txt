@@ -1,0 +1,15 @@
+# Schedule Parser v3.0 - Dependencies
+
+# OCR
+pytesseract>=0.3.10
+pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Clipboard
+pyperclip>=1.8.0
+
+# GUI
+tkinterdnd2>=0.4.0
+
+# Utilities
+numpy>=1.24.0
