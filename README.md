@@ -6,9 +6,19 @@ Offline shipping schedule parser with OCR - extract vessel schedules from screen
 
 **Author:** Gian Geralcus
 **Created:** 06 January 2026
-**Purpose:** Memudahkan small performance workflow yang dapat memiliki efek jangka panjang dalam pengurusan scheduling kapal - baik yang delay, non-delay, maupun conjunction.
+**Project Type:** Personal Project
 
-This tool streamlines the daily workflow of managing vessel schedules by automatically extracting schedule data from shipping line screenshots. What seems like a small efficiency improvement compounds over time, significantly reducing manual data entry and potential errors in ship scheduling operations.
+### Tujuan / Purpose
+
+Memudahkan small performance workflow yang dapat memiliki efek jangka panjang dalam pengurusan scheduling kapal - baik yang **delay**, **non-delay**, maupun **conjunction**.
+
+Tool ini dibuat untuk:
+- Mengotomatisasi ekstraksi data schedule dari screenshot shipping line
+- Mengurangi manual data entry yang memakan waktu
+- Meminimalisir human error dalam penginputan jadwal kapal
+- Mempercepat workflow harian dalam pengurusan vessel scheduling
+
+> *"Small efficiency improvements compound over time"* - Apa yang terlihat seperti penghematan kecil setiap hari, akan memberikan dampak signifikan dalam jangka panjang untuk operasional shipping schedule management.
 
 ## Quick Start Guides
 
@@ -196,5 +206,8 @@ Option 2:
 
 ## License
 
-MIT License
+**Personal Project - Gian Geralcus**
+
+This project is a personal project created by Gian Geralcus. All rights reserved.
+Unauthorized copying, modification, or distribution is not permitted without explicit permission from the author.
 
