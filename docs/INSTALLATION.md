@@ -1,6 +1,40 @@
-# Installation Guide
+# Installation & Cara Pake
 
-Complete installation guide for Schedule Parser v3.0.
+Guide lengkap buat install dan pake Schedule Parser v3.0.
+
+---
+
+## Cara Pake (Quick Start)
+
+### GUI Mode (Recommended)
+
+1. **Run aplikasi:**
+   ```bash
+   python schedule_gui.py
+   ```
+
+2. **Drag & drop** screenshot schedule ke window
+
+3. **Hasil otomatis muncul** - vessel, voyage, ETD, ETA
+
+4. **Klik "Copy to Clipboard"** → paste ke email/system
+
+### Tips
+
+- Rename file pake prefix biar auto-detect carrier: `m_screenshot.png` = MAERSK
+- Kalo hasil kurang akurat, coba screenshot yang lebih clear
+- Output ke-save otomatis di folder `2_hasil/`
+
+### Folder
+
+```
+1_screenshots/   ← Taruh screenshot disini
+2_hasil/         ← Hasil parsing kesimpen disini
+```
+
+---
+
+## Installation
 
 ## Platform-Specific Guides
 

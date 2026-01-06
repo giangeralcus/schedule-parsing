@@ -14,44 +14,63 @@ Tool buat extract jadwal kapal dari screenshot - offline, pake OCR.
 
 ---
 
-## Kenapa Bikin Ini?
+## Tujuan
 
-Biar kerjaan ngurus schedule kapal lebih gampang - yang **delay**, **non-delay**, atau **conjunction**.
+Bikin kerjaan ngurus schedule kapal jadi lebih **cepat** dan **efisien** - yang **delay**, **non-delay**, atau **conjunction**.
 
-### Masalahnya Apa?
+### Problem
 
 Tiap hari kita harus:
 1. Terima screenshot schedule dari shipping line
 2. Ketik ulang manual data vessel, voyage, ETD, ETA
 3. Cek lagi biar ga typo
 
-Capek kan? Makan waktu lagi. **Schedule Parser** otomatisin ini semua.
+Makan waktu. Capek. Rawan salah.
 
-### Bedanya Gimana?
+### Solution
+
+**Schedule Parser** otomatisin semuanya. Drag screenshot → dapet data. Done.
 
 | Sebelum | Sesudah |
 |---------|---------|
-| Ketik manual dari screenshot | Drag & drop, auto extract |
-| Sering typo | OCR + validasi otomatis |
-| 5-10 menit per schedule | < 30 detik aja |
-| Copy satu-satu | Copy semua sekaligus |
-
-> *"Small improvements compound over time"*
-> Yang keliatan kecil tiap hari, lama-lama ngaruh gede.
+| Ketik manual | Auto extract |
+| Sering typo | OCR + validasi |
+| 5-10 menit | < 30 detik |
+| Copy satu-satu | Copy semua |
 
 ---
 
-## Cara Kerja
+## Business Use Case
+
+Tool ini cocok buat:
+
+- **Freight Forwarder** - Cepet dapet info schedule buat customer
+- **Shipping Ops** - Update jadwal kapal tanpa ketik manual
+- **Customer Service** - Quick response buat inquiry schedule
+- **Documentation** - Data vessel/voyage langsung ready
+
+### Workflow Integration
 
 ```
-Screenshot  →  OCR Extract  →  Parse Data  →  Format  →  Copy/Save
-  (input)      (Tesseract)    (by carrier)   (email)    (clipboard)
+Email masuk (screenshot)
+       ↓
+  Schedule Parser
+       ↓
+  Copy to clipboard
+       ↓
+  Paste ke system/email
+       ↓
+     Done ✓
 ```
 
-### Carrier yang Support
+Hemat waktu = hemat cost = kerja lebih produktif.
 
-| Carrier | Auto-detect | Prefix File |
-|---------|-------------|-------------|
+---
+
+## Supported Carriers
+
+| Carrier | Auto-detect | Prefix |
+|---------|-------------|--------|
 | MAERSK | ✅ | `m_` |
 | OOCL | ✅ | `o_` |
 | CMA-CGM | ✅ | `c_` |
@@ -64,10 +83,9 @@ Screenshot  →  OCR Extract  →  Parse Data  →  Format  →  Copy/Save
 | WAN-HAI | ✅ | `w_` |
 | PIL | ✅ | `p_` |
 
-**Tips:** Rename file pake prefix biar auto-detect.
-Contoh: `m_schedule_jan.png` → ke-detect sebagai MAERSK.
+---
 
-### Output-nya
+## Output
 
 ```
 Carrier: MAERSK
@@ -85,43 +103,26 @@ Option 2:
   ETA     : 18 Jan 2026, 23:00
 ```
 
-Tinggal copy, paste ke email. Beres.
+Copy → Paste ke email → Beres.
 
 ---
 
 ## Fitur
 
-- **Drag & Drop** - Tinggal drag screenshot ke window
-- **11 Shipping Lines** - Maersk, CMA, OOCL, dll
-- **Auto-Detect Carrier** - Dari nama file atau isi screenshot
-- **OCR** - Pake Tesseract, ada preprocessing juga
-- **Smart Validation** - Kalo ETD/ETA kebalik, auto-swap
-- **Copy to Clipboard** - Langsung copy hasil
-- **Organized** - Hasil ke-save per folder carrier
+- **Drag & Drop** - Tinggal drag screenshot
+- **11 Shipping Lines** - Major carriers supported
+- **Auto-Detect** - Carrier ke-detect otomatis
+- **OCR** - Tesseract + preprocessing
+- **Smart Validation** - ETD/ETA auto-swap kalo kebalik
+- **Clipboard** - Langsung copy hasil
 
 ---
 
-## Folder
+## Documentation
 
-```
-1_screenshots/   ← Taruh screenshot disini
-2_hasil/         ← Hasil parsing kesimpen disini
-```
-
----
-
-## Install & Cara Pake
-
-Cek guide lengkap:
-
-- **[Installation Guide](docs/INSTALLATION.md)** - Setup lengkap
-- **[macOS Guide](docs/README-MACOS.md)** - Buat Mac user
-- **[Windows Guide](docs/README-WINDOWS.md)** - Buat Windows user
-
-**Quick Start:**
-```bash
-python schedule_gui.py
-```
+- **[Installation & Cara Pake](docs/INSTALLATION.md)**
+- **[macOS Guide](docs/README-MACOS.md)**
+- **[Windows Guide](docs/README-WINDOWS.md)**
 
 ---
 
