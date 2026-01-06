@@ -129,4 +129,4 @@ python schedule_gui.py
 
 **Personal Project - Gian Geralcus**
 
-Project pribadi, hak cipta Gian Geralcus. Ga boleh copy/modif/distribute tanpa izin.
+For personal project & hobbies use only.
