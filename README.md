@@ -8,7 +8,7 @@ Simple OCR tool buat extract data dari screenshot.
 
 **Author:** Gian Geralcus
 **Created:** 06 January 2026
-**Type:** Personal Project
+**Type:** Part-time hobby project
 
 ---
 
