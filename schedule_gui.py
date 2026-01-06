@@ -121,12 +121,23 @@ class ScheduleParserGUI:
             )
         title.pack(side=tk.LEFT)
 
+        # Right side info
+        right_frame = ttkb.Frame(header_frame)
+        right_frame.pack(side=tk.RIGHT)
+
         version = ttkb.Label(
-            header_frame,
+            right_frame,
             text="v3.0 Offline",
             font=("Segoe UI", 10)
         )
-        version.pack(side=tk.RIGHT, pady=5)
+        version.pack(anchor='e')
+
+        author = ttkb.Label(
+            right_frame,
+            text="Made by Gian Geralcus © 2026",
+            font=("Segoe UI", 8)
+        )
+        author.pack(anchor='e')
 
     def create_drop_zone(self, parent):
         """Create drag & drop zone with optional image preview"""

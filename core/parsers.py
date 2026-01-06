@@ -136,36 +136,58 @@ class MaerskParser(CarrierParser):
 
 
 class CMAParser(CarrierParser):
-    """Parser for CMA/CNC format: Vessel NAME + weekday dates"""
+    """Parser for CMA/CNC format: Main vessel NAME + weekday dates + Voyage Ref"""
 
     name = "CMA-CGM"
 
-    # Pattern: "Vessel DANUM 175 CO2..."
-    VESSEL_PATTERN = r'Vessel\s+([A-Z][A-Z0-9\s]{2,20}?)(?:\s+CO2|\s*$)'
+    # Pattern: "Main vessel DANUM 175" or "Main vessel CNC JUPITER"
+    # Captures: LETTERS + optional (LETTERS or NUMBERS)
+    VESSEL_PATTERN = r'Main\s+vessel\s+([A-Z]+(?:\s+[A-Z]+)?(?:\s+\d+)?)'
 
-    # Pattern: "Sunday, 11-Jan-2026"
+    # Pattern: "Voyage Ref. 0SQ3CN1MA"
+    VOYAGE_PATTERN = r'Voyage\s+Ref\.?\s*([A-Z0-9]{6,15})'
+
+    # Pattern: "Sunday, 11-JAN-2026"
     DATE_PATTERN = r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[,\s]+(\d{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4})'
 
     def can_parse(self, text: str) -> bool:
         has_vessel = bool(re.search(self.VESSEL_PATTERN, text, re.IGNORECASE))
         has_weekday = bool(re.search(self.DATE_PATTERN, text, re.IGNORECASE))
-        return has_vessel and has_weekday
+        return has_vessel or (has_weekday and 'cma' in text.lower())
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
         full_text = '\n'.join(text_lines)
         schedules = []
 
-        # Find vessels
-        vessel_matches = re.findall(self.VESSEL_PATTERN, full_text, re.IGNORECASE)
+        # Find all vessels (keep order, normalize names)
+        vessel_matches_raw = re.findall(self.VESSEL_PATTERN, full_text, re.IGNORECASE)
+        vessel_matches = [self.normalize_vessel(v.strip()) for v in vessel_matches_raw]
 
-        # Find weekday dates
-        date_matches = re.findall(self.DATE_PATTERN, full_text, re.IGNORECASE)
+        # Find all voyages (keep order, dedupe OCR errors)
+        voyage_matches_raw = re.findall(self.VOYAGE_PATTERN, full_text, re.IGNORECASE)
+        voyage_matches = []
+        seen_voyages = set()
+        for v in voyage_matches_raw:
+            v_upper = v.upper()
+            if v_upper not in seen_voyages:
+                voyage_matches.append(v_upper)
+                seen_voyages.add(v_upper)
 
-        # Pair vessels with dates
-        seen = set()
-        for i, vessel in enumerate(vessel_matches):
-            vessel = self.normalize_vessel(vessel)
+        # Find unique dates (dedupe OCR duplicates)
+        date_matches_raw = re.findall(self.DATE_PATTERN, full_text, re.IGNORECASE)
+        date_matches = []
+        seen_dates = set()
+        for d in date_matches_raw:
+            d_upper = d.upper()
+            if d_upper not in seen_dates:
+                date_matches.append(d)
+                seen_dates.add(d_upper)
 
+        # Number of schedules = number of date pairs
+        num_schedules = len(date_matches) // 2
+
+        # Build schedules - match vessel+voyage with date pairs
+        for i in range(num_schedules):
             etd_idx = i * 2
             eta_idx = i * 2 + 1
 
@@ -175,15 +197,13 @@ class CMAParser(CarrierParser):
             if not etd:
                 continue
 
-            # Deduplicate
-            key = f"{vessel}|{etd}"
-            if key in seen:
-                continue
-            seen.add(key)
+            # Get vessel and voyage for this schedule
+            vessel = vessel_matches[i] if i < len(vessel_matches) else "TBA"
+            voyage = voyage_matches[i] if i < len(voyage_matches) else "-"
 
             schedules.append(Schedule(
                 vessel=vessel,
-                voyage="-",
+                voyage=voyage,
                 etd=etd,
                 eta=eta,
                 carrier=self.name

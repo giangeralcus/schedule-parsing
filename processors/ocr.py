@@ -12,6 +12,7 @@ pytesseract = None
 
 try:
     import pytesseract as _pytesseract
+    import shutil
     pytesseract = _pytesseract
 
     # Find Tesseract executable
@@ -19,12 +20,22 @@ try:
         r'C:\Program Files\Tesseract-OCR\tesseract.exe',
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
         r'/usr/bin/tesseract',
+        r'/opt/homebrew/bin/tesseract',  # macOS Apple Silicon (Homebrew)
+        r'/usr/local/bin/tesseract',     # macOS Intel (Homebrew)
     ]
+
     for path in tesseract_paths:
         if os.path.exists(path):
             pytesseract.pytesseract.tesseract_cmd = path
             HAS_OCR = True
             break
+
+    # Fallback: check if tesseract is in PATH
+    if not HAS_OCR:
+        tesseract_in_path = shutil.which('tesseract')
+        if tesseract_in_path:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_in_path
+            HAS_OCR = True
 except ImportError:
     pass
 

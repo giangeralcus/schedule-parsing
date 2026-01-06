@@ -41,8 +41,10 @@ VESSEL_DB = {
     'MARTINSCHULTE': 'MARTIN SCHULTE',
     'COSCO ISTANBUL': 'COSCO ISTANBUL',
     'COSCOISTANBUL': 'COSCO ISTANBUL',
-    'DANUM': 'DANUM',
+    'DANUM175': 'DANUM 175',
+    'DANUM 175': 'DANUM 175',
     'CNC JUPITER': 'CNC JUPITER',
+    'CNCJUPITER': 'CNC JUPITER',
 }
 
 # OCR settings
@@ -55,6 +57,8 @@ TESSERACT_PATHS = [
     r'C:\Program Files\Tesseract-OCR\tesseract.exe',
     r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
     r'/usr/bin/tesseract',
+    r'/opt/homebrew/bin/tesseract',  # macOS Apple Silicon (Homebrew)
+    r'/usr/local/bin/tesseract',     # macOS Intel (Homebrew)
 ]
 
 
