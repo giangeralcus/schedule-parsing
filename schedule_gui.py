@@ -475,36 +475,69 @@ class ScheduleParserGUI:
         thread.start()
 
     def _process_thread(self):
-        """Background processing thread"""
+        """Background processing thread with detailed error reporting"""
         try:
+            # Step 1: Check OCR availability
             if not self.ocr.is_available():
-                self.root.after(0, lambda: self._show_error("Tesseract OCR not installed"))
+                self.root.after(0, lambda: self._show_error(
+                    "Tesseract OCR not installed",
+                    "Install Tesseract: https://github.com/tesseract-ocr/tesseract"
+                ))
                 return
 
-            # Extract text
+            # Step 2: Check file exists
+            if not os.path.exists(self.current_file):
+                self.root.after(0, lambda: self._show_error(
+                    "File not found",
+                    f"Path: {self.current_file}"
+                ))
+                return
+
+            # Step 3: Extract text with timeout
             text_lines = self.ocr.extract_text(self.current_file)
+
             if not text_lines:
-                self.root.after(0, lambda: self._show_error("No text extracted from image"))
+                # Check why OCR failed
+                from processors.image import ImageProcessor
+                img_proc = ImageProcessor()
+                img_info = img_proc.get_image_info(self.current_file)
+
+                if not img_info:
+                    reason = "Image file corrupt or unreadable"
+                elif img_info.get('width', 0) < 100:
+                    reason = f"Image too small ({img_info.get('width')}x{img_info.get('height')}px)"
+                else:
+                    reason = f"OCR could not extract text (image: {img_info.get('width')}x{img_info.get('height')}px)"
+
+                self.root.after(0, lambda r=reason: self._show_error("No text extracted", r))
                 return
 
-            # Get carrier
+            # Step 4: Detect carrier
             carrier = self.carrier_var.get()
             if carrier == "Auto-detect":
                 carrier = detect_carrier('\n'.join(text_lines))
 
             self.current_carrier = carrier
 
-            # Parse schedules
+            # Step 5: Parse schedules
             schedules = parse_schedules(text_lines, carrier)
 
             if not schedules:
-                self.root.after(0, lambda: self._show_error("No schedules found. Try different image or Edit mode."))
+                # Show what was detected for debugging
+                sample_text = text_lines[:3] if len(text_lines) > 3 else text_lines
+                sample = '\n'.join(sample_text)[:150]
+                self.root.after(0, lambda s=sample: self._show_error(
+                    "No schedules found",
+                    f"Carrier: {carrier or 'Unknown'}\nOCR extracted {len(text_lines)} lines.\nSample:\n{s}..."
+                ))
                 return
 
             self.root.after(0, lambda: self._show_results(schedules, carrier))
 
         except Exception as e:
-            self.root.after(0, lambda: self._show_error(str(e)))
+            import traceback
+            err_detail = traceback.format_exc().split('\n')[-2]
+            self.root.after(0, lambda: self._show_error(f"Error: {str(e)}", err_detail))
 
     def _show_results(self, schedules, carrier):
         """Display results"""
@@ -533,15 +566,21 @@ class ScheduleParserGUI:
 
         self.update_status(f"Found {len(schedules)} schedule(s) - Ready to copy!")
 
-    def _show_error(self, message):
-        """Show error"""
+    def _show_error(self, message, detail=None):
+        """Show error with optional detail"""
         self.result_text.config(state='normal')
         self.result_text.delete(1.0, tk.END)
-        self.result_text.insert(tk.END, f"❌ Error: {message}\n\n")
+        self.result_text.insert(tk.END, f"❌ {message}\n\n")
+
+        if detail:
+            self.result_text.insert(tk.END, f"Detail:\n{detail}\n\n")
+
+        self.result_text.insert(tk.END, "-" * 40 + "\n")
         self.result_text.insert(tk.END, "Tips:\n")
-        self.result_text.insert(tk.END, "- Make sure screenshot is clear and readable\n")
-        self.result_text.insert(tk.END, "- Try a different carrier setting\n")
-        self.result_text.insert(tk.END, "- Use CLI version with Edit mode for manual correction")
+        self.result_text.insert(tk.END, "- Screenshot harus jelas dan terbaca\n")
+        self.result_text.insert(tk.END, "- Coba pilih carrier manual (bukan Auto-detect)\n")
+        self.result_text.insert(tk.END, "- Pastikan format schedule sesuai (Maersk/OOCL/CMA)\n")
+        self.result_text.insert(tk.END, "- Crop screenshot agar fokus ke tabel schedule")
         self.result_text.config(state='disabled')
 
         self.process_btn.config(state='normal')

@@ -53,9 +53,13 @@ class OCRProcessor:
         """Check if OCR is available"""
         return self.has_ocr
 
-    def extract_text(self, image_path: str) -> List[str]:
+    def extract_text(self, image_path: str, timeout: int = 30) -> List[str]:
         """
-        Extract text from image using multiple OCR passes
+        Extract text from image using OCR
+
+        Args:
+            image_path: Path to image file
+            timeout: OCR timeout in seconds (default 30)
 
         Returns:
             List of cleaned text lines
@@ -71,17 +75,21 @@ class OCRProcessor:
         if img is None:
             return []
 
-        # Multi-pass OCR with different PSM modes
+        # OCR with timeout protection
         all_text = []
         for psm in self.psm_modes:
             try:
                 config = f'--oem 3 --psm {psm}'
-                text = pytesseract.image_to_string(img, config=config)
+                text = pytesseract.image_to_string(img, config=config, timeout=timeout)
 
                 for line in text.split('\n'):
                     line = self._clean_text(line)
                     if line and len(line) > 2 and line not in all_text:
                         all_text.append(line)
+            except RuntimeError as e:
+                # Timeout error
+                if 'Tesseract process timeout' in str(e):
+                    continue
             except Exception:
                 continue
 

@@ -2,6 +2,21 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.3] - 2026-01-07
+
+### Improved
+- **GUI Error Messages** (`schedule_gui.py`)
+  - Detailed error reporting dengan alasan spesifik
+  - Show OCR sample text saat "No schedules found"
+  - Tips troubleshooting dalam bahasa Indonesia
+  - File validation sebelum processing
+
+- **OCR Timeout Protection** (`processors/ocr.py`)
+  - Default timeout 30 detik per image
+  - Prevent GUI hang pada image besar/corrupt
+
+---
+
 ## [3.2.2] - 2026-01-07
 
 ### Database
