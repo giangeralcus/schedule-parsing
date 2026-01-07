@@ -81,32 +81,54 @@ class CarrierParser(ABC):
 
 
 class MaerskParser(CarrierParser):
-    """Parser for Maersk format: VESSEL / VOYAGE with datetime"""
+    """Parser for Maersk format: VESSEL / VOYAGE or VESSEL VOYAGE with datetime"""
 
     name = "MAERSK"
 
-    # Pattern: "SPIL NISAKA / 602N"
-    VESSEL_PATTERN = r'([A-Za-z][A-Za-z\s\.\-]{2,25}?)\s*/\s*(\d{3,4}[A-Z]?)'
+    # Pattern 1: "SPIL NISAKA / 602N" (with slash separator)
+    VESSEL_PATTERN_SLASH = r'([A-Za-z][A-Za-z\s\.\-]{2,25}?)\s*/\s*(\d{3,4}[A-Z]?)'
+
+    # Pattern 2: "SPIL NIKEN 602N" (no slash, space only)
+    # Matches: vessel name (2+ words or single word) + voyage (3-4 digits + letter)
+    VESSEL_PATTERN_NO_SLASH = r'\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+(\d{3,4}[A-Z])\b'
 
     # Pattern: "16 Jan 2026, 19:00"
     DATE_PATTERN = r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})[,\s]+(\d{1,2}:\d{2})'
 
     def can_parse(self, text: str) -> bool:
-        return bool(re.search(self.VESSEL_PATTERN, text))
+        has_slash = bool(re.search(self.VESSEL_PATTERN_SLASH, text))
+        has_no_slash = bool(re.search(self.VESSEL_PATTERN_NO_SLASH, text))
+        has_date_time = bool(re.search(self.DATE_PATTERN, text, re.IGNORECASE))
+        has_maersk = 'maersk' in text.lower() or '/voyage' in text.lower()
+        # Slash format always works, no-slash requires date/time pattern
+        return has_slash or (has_no_slash and has_date_time) or has_maersk
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
         full_text = '\n'.join(text_lines)
         schedules = []
 
-        # Find vessels with voyage numbers
-        vessel_matches = re.findall(self.VESSEL_PATTERN, full_text)
+        # Try slash pattern first, then no-slash pattern
+        vessel_matches = re.findall(self.VESSEL_PATTERN_SLASH, full_text)
+        if not vessel_matches:
+            vessel_matches = re.findall(self.VESSEL_PATTERN_NO_SLASH, full_text)
+
+        # Skip words that aren't vessel names (common OCR false positives)
+        skip_words = ['VESSEL', 'VOYAGE', 'SERVICE', 'MAERSK', 'PORT', 'TERMINAL',
+                      'DEPARTURE', 'ARRIVAL', 'CUTOFF', 'CUT', 'OFF', 'DATE', 'TIME']
 
         vessels = {}
         for v, voyage in vessel_matches:
             voyage = voyage.strip().upper()
-            v = self.normalize_vessel(v)
-            if len(v) >= 3 and voyage[-1:].isalpha() and voyage not in vessels:
-                vessels[voyage] = v
+            v_clean = v.strip()
+            v_upper = v_clean.upper()
+
+            # Skip false positives
+            if v_upper in skip_words or any(skip in v_upper for skip in skip_words):
+                continue
+
+            v_normalized = self.normalize_vessel(v_clean)
+            if len(v_normalized) >= 3 and voyage[-1:].isalpha() and voyage not in vessels:
+                vessels[voyage] = v_normalized
 
         # Find dates with times
         date_matches = re.findall(self.DATE_PATTERN, full_text, re.IGNORECASE)

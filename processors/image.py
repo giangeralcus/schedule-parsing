@@ -57,6 +57,10 @@ class ImageProcessor:
             scale = self.min_width / w
             gray = cv2.resize(gray, None, fx=scale, fy=scale,
                             interpolation=cv2.INTER_CUBIC)
+            h, w = gray.shape
+
+        # Deskew image if rotated
+        gray = self._deskew(gray)
 
         # Apply CLAHE for better contrast (handles varying lighting)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -72,6 +76,9 @@ class ImageProcessor:
             cv2.THRESH_BINARY, 11, 2
         )
 
+        # Remove horizontal/vertical lines (table borders)
+        binary = self._remove_lines(binary)
+
         # Morphological cleaning - close gaps in text
         kernel = np.ones((2, 2), np.uint8)
         cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
@@ -82,6 +89,70 @@ class ImageProcessor:
 
         # Convert to PIL Image
         return Image.fromarray(cleaned)
+
+    def _deskew(self, img):
+        """Deskew image using Hough transform to detect rotation angle"""
+        try:
+            # Detect edges
+            edges = cv2.Canny(img, 50, 150, apertureSize=3)
+
+            # Detect lines using Hough transform
+            lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100,
+                                    minLineLength=100, maxLineGap=10)
+
+            if lines is None or len(lines) < 5:
+                return img
+
+            # Calculate angles from detected lines
+            angles = []
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                if x2 - x1 != 0:
+                    angle = np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi
+                    # Only consider near-horizontal lines (within 15 degrees)
+                    if abs(angle) < 15:
+                        angles.append(angle)
+
+            if not angles:
+                return img
+
+            # Use median angle for robustness
+            median_angle = np.median(angles)
+
+            # Only deskew if angle is significant (> 0.5 degrees)
+            if abs(median_angle) < 0.5:
+                return img
+
+            # Rotate image to correct skew
+            h, w = img.shape
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, median_angle, 1.0)
+            rotated = cv2.warpAffine(img, M, (w, h),
+                                     flags=cv2.INTER_CUBIC,
+                                     borderMode=cv2.BORDER_REPLICATE)
+            return rotated
+        except Exception:
+            return img
+
+    def _remove_lines(self, binary_img):
+        """Remove horizontal and vertical lines (table borders) from image"""
+        try:
+            result = binary_img.copy()
+            h, w = binary_img.shape
+
+            # Remove horizontal lines
+            horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (w // 30, 1))
+            horizontal_lines = cv2.morphologyEx(binary_img, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+            result = cv2.add(result, horizontal_lines)
+
+            # Remove vertical lines
+            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, h // 30))
+            vertical_lines = cv2.morphologyEx(binary_img, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+            result = cv2.add(result, vertical_lines)
+
+            return result
+        except Exception:
+            return binary_img
 
     def _preprocess_pil(self, image_path: str):
         """Basic preprocessing with PIL only"""

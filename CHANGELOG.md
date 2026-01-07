@@ -2,6 +2,25 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.0] - 2026-01-07
+
+### Added
+- **Maersk Parser No-Slash Format** (`core/parsers.py`)
+  - New pattern for "SPIL NIKEN 602N" format (no slash separator)
+  - Fallback to original "VESSEL / VOYAGE" pattern
+  - Skip word filtering for OCR false positives
+
+- **Image Preprocessing Improvements** (`processors/image.py`)
+  - Deskew using Hough transform (auto-correct rotated images)
+  - Line removal (remove table borders for cleaner OCR)
+  - Better handling of tabular shipping schedule layouts
+
+- **New Maersk Vessels** (database)
+  - SPIL NIKEN, ARTOTINA, AS PIA, SEASPAN GUAYAQUIL, MARSA PRIDE
+  - Total: 23 vessels, 40+ aliases
+
+---
+
 ## [3.1.0] - 2026-01-07
 
 ### Added
