@@ -52,6 +52,11 @@ TEST_*.md
 *.temp
 *.log
 
+# Environment (secrets)
+.env
+.env.local
+.env.*.local
+
 # Keep screenshot and output folders but ignore contents
 1_screenshots/*
 !1_screenshots/.gitkeep

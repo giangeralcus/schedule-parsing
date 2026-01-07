@@ -47,7 +47,7 @@ class OCRProcessor:
         self.confidence_threshold = confidence_threshold
         self.image_processor = ImageProcessor()
         self.has_ocr = HAS_OCR
-        self.psm_modes = [6, 11, 4]  # Different page segmentation modes
+        self.psm_modes = [6]  # Single pass for cleaner results  # Different page segmentation modes
 
     def is_available(self) -> bool:
         """Check if OCR is available"""

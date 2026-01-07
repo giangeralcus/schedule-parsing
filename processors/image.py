@@ -21,7 +21,7 @@ except ImportError:
 class ImageProcessor:
     """Image preprocessing for better OCR results"""
 
-    def __init__(self, min_width: int = 1500):
+    def __init__(self, min_width: int = 2500):
         self.min_width = min_width
         self.has_cv2 = HAS_CV2
 

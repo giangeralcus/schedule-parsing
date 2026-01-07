@@ -14,13 +14,18 @@ import tkinter as tk
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Try ttkbootstrap first, fallback to ttk
-try:
-    import ttkbootstrap as ttkb
-    from ttkbootstrap.constants import *
-    HAS_BOOTSTRAP = True
-except ImportError:
+# Note: ttkbootstrap has issues with Python 3.14, force fallback
+if sys.version_info >= (3, 14):
     from tkinter import ttk as ttkb
     HAS_BOOTSTRAP = False
+else:
+    try:
+        import ttkbootstrap as ttkb
+        from ttkbootstrap.constants import *
+        HAS_BOOTSTRAP = True
+    except ImportError:
+        from tkinter import ttk as ttkb
+        HAS_BOOTSTRAP = False
 
 # Try drag-and-drop support
 HAS_DND = False

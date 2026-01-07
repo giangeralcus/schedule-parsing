@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 from .models import Schedule, ParseResult
 from .config import CARRIER_MAP, VESSEL_DB
+from .vessel_db import match_vessel, get_vessel_db
 
 
 def get_carrier_from_filename(filename: str) -> Optional[str]:
@@ -60,13 +61,18 @@ class CarrierParser(ABC):
         pass
 
     def normalize_vessel(self, name: str) -> str:
-        """Normalize vessel name using database"""
+        """Normalize vessel name using Supabase + fuzzy matching"""
         name = name.strip()
         # Add space between letters and numbers
         name = re.sub(r'([A-Z])(\d)', r'\1 \2', name)
         name = re.sub(r'\s+', ' ', name).strip()
 
-        # Check vessel database
+        # Use vessel_db for smart matching (Supabase + fuzzy)
+        matched = match_vessel(name)
+        if matched:
+            return matched
+
+        # Fallback to local VESSEL_DB if no match
         name_key = name.upper().replace('.', '').replace('-', ' ')
         for key, value in VESSEL_DB.items():
             if key.replace('-', ' ').replace('.', '') in name_key:
@@ -136,13 +142,13 @@ class MaerskParser(CarrierParser):
 
 
 class CMAParser(CarrierParser):
-    """Parser for CMA/CNC format: Main vessel NAME + weekday dates + Voyage Ref"""
+    """Parser for CMA/CNC format: Vessel NAME + weekday dates + Voyage Ref"""
 
     name = "CMA-CGM"
 
-    # Pattern: "Main vessel DANUM 175" or "Main vessel CNC JUPITER"
-    # Captures: LETTERS + optional (LETTERS or NUMBERS)
-    VESSEL_PATTERN = r'Main\s+vessel\s+([A-Z]+(?:\s+[A-Z]+)?(?:\s+\d+)?)'
+    # Pattern: "Vessel DANUM 175" or "Vessel CNC JUPITER" (with optional "Main" prefix)
+    # Also handles OCR errors like "DANUM175" (no space)
+    VESSEL_PATTERN = r'(?:Main\s+)?[Vv]essel\s+([A-Z]+(?:\s*[A-Z]+)?(?:\s*\d+)?)'
 
     # Pattern: "Voyage Ref. 0SQ3CN1MA"
     VOYAGE_PATTERN = r'Voyage\s+Ref\.?\s*([A-Z0-9]{6,15})'
@@ -153,7 +159,8 @@ class CMAParser(CarrierParser):
     def can_parse(self, text: str) -> bool:
         has_vessel = bool(re.search(self.VESSEL_PATTERN, text, re.IGNORECASE))
         has_weekday = bool(re.search(self.DATE_PATTERN, text, re.IGNORECASE))
-        return has_vessel or (has_weekday and 'cma' in text.lower())
+        has_cnc = 'cnc' in text.lower() or 'cma' in text.lower() or 'tix2cnc' in text.lower()
+        return has_vessel or (has_weekday and has_cnc)
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
         full_text = '\n'.join(text_lines)
@@ -213,46 +220,106 @@ class CMAParser(CarrierParser):
 
 
 class OOCLParser(CarrierParser):
-    """Parser for OOCL format: Location + event with times"""
+    """Parser for OOCL format: Multiple formats supported"""
 
     name = "OOCL"
 
-    # Pattern: "7 Jan 23:00 -> Location"
-    EVENT_PATTERN = r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s+(\d{1,2}:\d{2})\s*(.*)'
+    # Vessel pattern: "Vessel Voyage: COSCO ISTANBUL 089S" or standalone
+    VESSEL_VOYAGE_PATTERN = r'(?:Vessel\s*(?:/\s*)?Voyage:?\s*)?([A-Z][A-Z\s\.\-]{2,20}?)\s+(\d{3,4}[A-Z0-9]?\d*[A-Z]?)'
+
+    # CY Cutoff - flexible for OCR errors: Cutof, Cute, Cuter, etc.
+    # Also handles '(' read as '1' by OCR
+    CY_CUTOFF_PATTERN = r'CY\s*Cut[oeu]?[fr]?[f]?:?\s*(\d{4}-\d{2}-\d{2})\d?\s*[\(\[]?\w{2,3}[\)\]]?\s*(\d{1,2}:\d{2})'
+
+    # Date with weekday: "07 Jan (Wed)" or "07 Jan Wee" (OCR error)
+    DATE_WEEKDAY_PATTERN = r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*[\(\[]?(\w{2,3})[\)\]]?'
 
     def can_parse(self, text: str) -> bool:
-        return 'oocl' in text.lower() or 'cy cut-off' in text.lower()
+        text_lower = text.lower()
+        return ('oocl' in text_lower or 'cy cut' in text_lower or
+                'vessel voyage' in text_lower or 'transshipment' in text_lower)
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
-        # OOCL format is complex, use simplified extraction
         full_text = '\n'.join(text_lines)
         schedules = []
 
-        # Try to find vessel names
-        vessel_pattern = r'([A-Z][A-Z\s\.\-]{3,20})\s+\d{3,4}[A-Z]?'
-        vessel_matches = re.findall(vessel_pattern, full_text)
+        # Extract CY Cutoff dates (ETD with time)
+        cutoff_matches = re.findall(self.CY_CUTOFF_PATTERN, full_text, re.IGNORECASE)
 
-        # Find dates
-        date_pattern = r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)[,\s]+(\d{1,2}:\d{2})'
-        date_matches = re.findall(date_pattern, full_text, re.IGNORECASE)
+        # Extract vessel/voyage pairs
+        vessel_matches = re.findall(self.VESSEL_VOYAGE_PATTERN, full_text)
 
-        if vessel_matches and date_matches:
-            for i, vessel in enumerate(vessel_matches):
-                etd_idx = i * 2
-                eta_idx = i * 2 + 1
+        # Extract all dates for ETA calculation
+        date_matches = re.findall(self.DATE_WEEKDAY_PATTERN, full_text, re.IGNORECASE)
 
-                etd = f"{date_matches[etd_idx][0]}, {date_matches[etd_idx][1]}" if etd_idx < len(date_matches) else None
-                eta = f"{date_matches[eta_idx][0]}, {date_matches[eta_idx][1]}" if eta_idx < len(date_matches) else None
+        # Filter valid vessels
+        skip_words = ['SERVICE', 'VOYAGE', 'VESSEL', 'CUTOFF', 'CY CUT', 'JAKARTA',
+                      'CHENNAI', 'BANGALORE', 'DOOR', 'CARGO', 'NATURE', 'TANK',
+                      'EMISSIONS', 'DAYS', 'TRANSSHIPMENT', 'SI CUT', 'FCS', 'SL',
+                      'WELL', 'WAKE', 'TEU']
+        valid_vessels = []
+        for vessel, voyage in vessel_matches:
+            v_upper = vessel.strip().upper()
+            if v_upper not in skip_words and len(v_upper) >= 3:
+                if re.search(r'[A-Z]{3,}', v_upper) and not v_upper.startswith('CY'):
+                    valid_vessels.append((vessel.strip(), voyage.strip()))
 
-                schedules.append(Schedule(
-                    vessel=self.normalize_vessel(vessel),
-                    voyage="-",
-                    etd=etd,
-                    eta=eta,
-                    carrier=self.name
-                ))
+        # Group dates by schedule row (approximately 4-5 dates per row)
+        # Find unique date groups by looking at patterns
+        
+        # Build schedules
+        seen = set()
+        cutoff_idx = 0
+        date_idx = 0
+        
+        for i, (vessel, voyage) in enumerate(valid_vessels):
+            vessel_clean = self.normalize_vessel(vessel)
+            voyage_clean = voyage.upper()
+
+            key = f"{vessel_clean}|{voyage_clean}"
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # ETD from CY Cutoff
+            etd = None
+            if cutoff_idx < len(cutoff_matches):
+                date_part, time_part = cutoff_matches[cutoff_idx]
+                from datetime import datetime
+                try:
+                    dt = datetime.strptime(date_part, "%Y-%m-%d")
+                    etd = dt.strftime("%d %b %Y") + f", {time_part}"
+                except:
+                    etd = f"{date_part}, {time_part}"
+                # Move to next cutoff every 2 vessels (transshipment pairs)
+                if i % 2 == 1:
+                    cutoff_idx += 1
+
+            # ETA - find the last date in each schedule row
+            # Each row has about 4-5 dates, we want the last one (arrival)
+            eta = None
+            if date_matches:
+                # Calculate which date group we're in
+                row_num = i // 2  # 2 vessels per row
+                base_date_idx = row_num * 5 + 4  # 5 dates per row, get the 5th (last)
+                if base_date_idx < len(date_matches):
+                    day, month, _ = date_matches[base_date_idx]
+                    eta = f"{day} {month} 2026"
+                elif len(date_matches) > 0:
+                    # Fallback to last date
+                    day, month, _ = date_matches[-1]
+                    eta = f"{day} {month} 2026"
+
+            schedules.append(Schedule(
+                vessel=vessel_clean,
+                voyage=voyage_clean,
+                etd=etd,
+                eta=eta,
+                carrier=self.name
+            ))
 
         return schedules
+
 
 
 class GenericParser(CarrierParser):
