@@ -2,22 +2,48 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.2] - 2026-01-07
+
+### Database
+- **New Maersk Vessels Added**
+  - SPIL NIKEN
+  - ARTOTINA
+  - AS PIA
+  - SEASPAN GUAYAQUIL
+  - MARSA PRIDE
+- Total vessels: 23
+- Total aliases: 40+
+- Synced to Supabase Cloud
+
+---
+
+## [3.2.1] - 2026-01-07
+
+### Changed
+- **Image Preprocessing Improvements** (`processors/image.py`)
+  - Added `_deskew()` method using Hough transform
+    - Auto-detects rotation angle from line detection
+    - Corrects skewed/rotated screenshots
+    - Only applies when angle > 0.5 degrees
+  - Added `_remove_lines()` method
+    - Removes horizontal table borders
+    - Removes vertical table borders
+    - Cleaner OCR results for tabular layouts
+
+---
+
 ## [3.2.0] - 2026-01-07
 
-### Added
+### Changed
 - **Maersk Parser No-Slash Format** (`core/parsers.py`)
-  - New pattern for "SPIL NIKEN 602N" format (no slash separator)
-  - Fallback to original "VESSEL / VOYAGE" pattern
-  - Skip word filtering for OCR false positives
-
-- **Image Preprocessing Improvements** (`processors/image.py`)
-  - Deskew using Hough transform (auto-correct rotated images)
-  - Line removal (remove table borders for cleaner OCR)
-  - Better handling of tabular shipping schedule layouts
-
-- **New Maersk Vessels** (database)
-  - SPIL NIKEN, ARTOTINA, AS PIA, SEASPAN GUAYAQUIL, MARSA PRIDE
-  - Total: 23 vessels, 40+ aliases
+  - Added `VESSEL_PATTERN_NO_SLASH` pattern
+    - Supports: "SPIL NIKEN 602N" (space only)
+    - Original: "SPIL NISAKA / 602N" (with slash)
+  - Updated `can_parse()` logic
+    - Slash format always accepted
+    - No-slash requires date/time pattern
+  - Added skip words filter for OCR false positives
+    - VESSEL, VOYAGE, SERVICE, MAERSK, PORT, TERMINAL, etc.
 
 ---
 
