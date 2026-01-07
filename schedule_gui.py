@@ -406,13 +406,33 @@ class ScheduleParserGUI:
             self.load_file(file_path)
 
     def load_file(self, file_path):
-        """Load and preview file"""
-        self.current_file = file_path
+        """Load and preview file with security validation"""
         filename = os.path.basename(file_path)
 
+        # Security: Check file exists
+        if not os.path.isfile(file_path):
+            self.update_status("File not found or invalid", error=True)
+            return
+
+        # Security: File size limit (max 50MB to prevent DoS)
+        MAX_FILE_SIZE_MB = 50
+        file_size_bytes = os.path.getsize(file_path)
+        file_size_kb = file_size_bytes / 1024
+        file_size_mb = file_size_kb / 1024
+
+        if file_size_mb > MAX_FILE_SIZE_MB:
+            self.update_status(f"File too large ({file_size_mb:.1f}MB > {MAX_FILE_SIZE_MB}MB limit)", error=True)
+            return
+
+        # Security: Validate image magic bytes (not just extension)
+        if not self._validate_image_magic(file_path):
+            self.update_status("Invalid image file (corrupted or wrong format)", error=True)
+            return
+
+        self.current_file = file_path
+
         # Update file label
-        file_size = os.path.getsize(file_path) / 1024
-        self.file_label.config(text=f"📄 {filename} ({file_size:.1f} KB)")
+        self.file_label.config(text=f"📄 {filename} ({file_size_kb:.1f} KB)")
 
         # Auto-detect carrier from filename
         carrier = get_carrier_from_filename(filename)
@@ -487,9 +507,10 @@ class ScheduleParserGUI:
 
             # Step 2: Check file exists
             if not os.path.exists(self.current_file):
-                self.root.after(0, lambda: self._show_error(
+                filename = os.path.basename(self.current_file)
+                self.root.after(0, lambda f=filename: self._show_error(
                     "File not found",
-                    f"Path: {self.current_file}"
+                    f"File: {f}"
                 ))
                 return
 
@@ -644,6 +665,31 @@ class ScheduleParserGUI:
         self.save_btn.config(state='disabled')
 
         self.update_status("Ready - Drop screenshot or click Browse")
+
+    def _validate_image_magic(self, file_path):
+        """Validate image file using magic bytes (not just extension)"""
+        # Magic bytes for common image formats
+        MAGIC_BYTES = {
+            b'\x89PNG\r\n\x1a\n': 'PNG',
+            b'\xff\xd8\xff': 'JPEG',
+            b'GIF87a': 'GIF',
+            b'GIF89a': 'GIF',
+            b'BM': 'BMP',
+            b'II*\x00': 'TIFF',
+            b'MM\x00*': 'TIFF',
+        }
+
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(16)
+
+            for magic, fmt in MAGIC_BYTES.items():
+                if header.startswith(magic):
+                    return True
+
+            return False
+        except Exception:
+            return False
 
     def update_status(self, message, error=False):
         """Update status bar"""

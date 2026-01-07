@@ -2,6 +2,30 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.4] - 2026-01-07
+
+### Security
+- **File Size Limit** (`schedule_gui.py`)
+  - Max 50MB untuk prevent DoS attack
+  - Error message jika file terlalu besar
+
+- **Magic Bytes Validation** (`schedule_gui.py`)
+  - Validasi header file, bukan hanya extension
+  - Support PNG, JPEG, GIF, BMP, TIFF
+
+- **Hide Full Paths** (`schedule_gui.py`)
+  - Error messages hanya tampilkan filename
+  - Tidak expose directory structure
+
+- **Cache File Permissions** (`core/vessel_db.py`)
+  - Set 0o600 (owner read/write only) pada Unix
+  - Protect local cache dari unauthorized access
+
+- **Sanitized .env.example**
+  - URL placeholder untuk public repo
+
+---
+
 ## [3.2.3] - 2026-01-07
 
 ### Improved

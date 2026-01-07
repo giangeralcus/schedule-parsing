@@ -241,6 +241,14 @@ class VesselDatabase:
             }
             with open(self.LOCAL_CACHE_FILE, 'w') as f:
                 json.dump(cache_data, f, indent=2)
+
+            # Security: Set restrictive file permissions (owner read/write only)
+            # On Windows this has limited effect but doesn't cause errors
+            try:
+                import stat
+                os.chmod(self.LOCAL_CACHE_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+            except (OSError, AttributeError):
+                pass  # Ignore on Windows or if chmod fails
         except Exception as e:
             print(f"[VesselDB] Failed to save local cache: {e}")
 
