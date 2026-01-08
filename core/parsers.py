@@ -8,6 +8,10 @@ from typing import List, Optional, Tuple
 from .models import Schedule, ParseResult
 from .config import CARRIER_MAP, VESSEL_DB
 from .vessel_db import match_vessel, get_vessel_db
+from .logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 
 def get_carrier_from_filename(filename: str) -> Optional[str]:
@@ -41,7 +45,11 @@ def detect_carrier(text: str) -> Optional[str]:
             scores[carrier] = score
 
     if scores:
-        return max(scores, key=scores.get)
+        detected = max(scores, key=scores.get)
+        logger.info(f"Carrier detected: {detected} (scores: {scores})")
+        return detected
+
+    logger.warning("No carrier detected from text")
     return None
 
 
@@ -533,27 +541,40 @@ def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -
     Returns:
         List of Schedule objects
     """
+    logger.debug(f"Parsing {len(text_lines)} text lines, carrier_hint={carrier_hint}")
     full_text = '\n'.join(text_lines)
     schedules = []
+    used_parser = None
 
     # If carrier hint provided, try that parser first
     if carrier_hint:
         for parser in PARSERS:
             if parser.name == carrier_hint or carrier_hint in parser.name:
+                logger.debug(f"Trying parser: {parser.name} (from hint)")
                 schedules = parser.parse(text_lines)
                 if schedules:
+                    used_parser = parser.name
                     break
 
     # Try each parser in order if no schedules yet
     if not schedules:
         for parser in PARSERS:
             if parser.can_parse(full_text):
+                logger.debug(f"Trying parser: {parser.name} (auto-detect)")
                 schedules = parser.parse(text_lines)
                 if schedules:
+                    used_parser = parser.name
                     break
 
     # Validate and fix dates (swap if ETD > ETA)
     for schedule in schedules:
         schedule.swap_dates_if_needed()
+
+    if schedules:
+        logger.info(f"Parsed {len(schedules)} schedules using {used_parser}")
+        for s in schedules[:3]:
+            logger.debug(f"  Schedule: {s.vessel}/{s.voyage} ETD:{s.etd} ETA:{s.eta}")
+    else:
+        logger.warning(f"No schedules parsed from {len(text_lines)} lines")
 
     return schedules

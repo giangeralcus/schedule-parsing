@@ -11,6 +11,11 @@ from typing import Optional, Dict, List, Tuple
 from pathlib import Path
 from datetime import datetime
 
+from .logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 # Load environment variables
 try:
     from dotenv import load_dotenv
@@ -104,7 +109,7 @@ class VesselDatabase:
     def _init_connections(self):
         """Initialize and test connections"""
         if not HAS_POSTGREST:
-            print("[VesselDB] postgrest not installed, using offline mode")
+            logger.warning("postgrest not installed, using offline mode")
             self._load_fallback_data()
             return
 
@@ -121,7 +126,7 @@ class VesselDatabase:
                 return
 
         # Fallback to offline
-        print("[VesselDB] No database connection, using offline mode")
+        logger.warning("No database connection, using offline mode")
         self._load_fallback_data()
 
     def _try_docker(self) -> bool:
@@ -141,10 +146,10 @@ class VesselDatabase:
             self.active_client = client
             self.active_mode = "docker"
             self._load_from_database()
-            print(f"[VesselDB] Connected to Docker (localhost)")
+            logger.info("Connected to Docker (localhost)")
             return True
         except Exception as e:
-            print(f"[VesselDB] Docker not available: {e}")
+            logger.debug(f"Docker not available: {e}")
             return False
 
     def _try_cloud(self) -> bool:
@@ -167,10 +172,10 @@ class VesselDatabase:
             self.active_client = client
             self.active_mode = "cloud"
             self._load_from_database()
-            print(f"[VesselDB] Connected to Supabase Cloud")
+            logger.info("Connected to Supabase Cloud")
             return True
         except Exception as e:
-            print(f"[VesselDB] Cloud not available: {e}")
+            logger.debug(f"Cloud not available: {e}")
             return False
 
     def _load_from_database(self):
@@ -189,12 +194,12 @@ class VesselDatabase:
                 if vessel_name:
                     self._aliases[a["alias"].upper()] = vessel_name
 
-            print(f"[VesselDB] Loaded {len(self._vessels)} vessels, {len(self._aliases)} aliases from {self.active_mode}")
+            logger.info(f"Loaded {len(self._vessels)} vessels, {len(self._aliases)} aliases from {self.active_mode}")
 
             # Save to local cache for offline use
             self._save_local_cache()
         except Exception as e:
-            print(f"[VesselDB] Failed to load from database: {e}")
+            logger.error(f"Failed to load from database: {e}")
             self._load_fallback_data()
 
     def _load_fallback_data(self):
@@ -226,7 +231,7 @@ class VesselDatabase:
                 self._aliases[alias.upper()] = name
 
         self.active_mode = "offline"
-        print(f"[VesselDB] Loaded {len(self._vessels)} vessels from fallback data (offline mode)")
+        logger.info(f"Loaded {len(self._vessels)} vessels from fallback data (offline mode)")
 
     def _save_local_cache(self):
         """Save current data to local JSON cache"""
@@ -250,7 +255,7 @@ class VesselDatabase:
             except (OSError, AttributeError):
                 pass  # Ignore on Windows or if chmod fails
         except Exception as e:
-            print(f"[VesselDB] Failed to save local cache: {e}")
+            logger.error(f"Failed to save local cache: {e}")
 
     def _load_local_cache(self) -> bool:
         """Load from local JSON cache"""
@@ -262,10 +267,10 @@ class VesselDatabase:
                 self._aliases = cache_data.get("aliases", {})
                 self._vessel_ids = cache_data.get("vessel_ids", {})
                 self.active_mode = "cache"
-                print(f"[VesselDB] Loaded {len(self._vessels)} vessels from local cache")
+                logger.info(f"Loaded {len(self._vessels)} vessels from local cache")
                 return True
         except Exception as e:
-            print(f"[VesselDB] Failed to load local cache: {e}")
+            logger.error(f"Failed to load local cache: {e}")
         return False
 
     def match(self, ocr_text: str) -> Tuple[str, int, str]:
@@ -320,13 +325,13 @@ class VesselDatabase:
                     "source": "ocr_auto",
                     "confidence": 90
                 }).execute()
-                print(f"[VesselDB] Auto-learned: '{alias}' -> '{vessel_name}' ({self.active_mode})")
+                logger.info(f"Auto-learned: '{alias}' -> '{vessel_name}' ({self.active_mode})")
 
                 # Update local cache file
                 self._save_local_cache()
             except Exception as e:
                 if "duplicate" not in str(e).lower():
-                    print(f"[VesselDB] Failed to save alias: {e}")
+                    logger.error(f"Failed to save alias: {e}")
 
     def add_vessel(self, name: str, carrier: str = None, aliases: List[str] = None) -> bool:
         """Add new vessel to database"""
@@ -347,10 +352,10 @@ class VesselDatabase:
                         self._save_alias(alias.upper(), name)
 
                 self._save_local_cache()
-                print(f"[VesselDB] Added vessel: {name}")
+                logger.info(f"Added vessel: {name}")
                 return True
             except Exception as e:
-                print(f"[VesselDB] Failed to add vessel: {e}")
+                logger.error(f"Failed to add vessel: {e}")
                 return False
         else:
             # Offline mode
@@ -429,7 +434,7 @@ class VesselDatabase:
                     except Exception as e:
                         stats["errors"].append(f"Alias {alias['alias']}: {e}")
 
-            print(f"[VesselDB] Sync complete: {stats['vessels_synced']} vessels, {stats['aliases_synced']} aliases")
+            logger.info(f"Sync complete: {stats['vessels_synced']} vessels, {stats['aliases_synced']} aliases")
 
             # Reload from active database
             self._load_from_database()

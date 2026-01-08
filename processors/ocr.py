@@ -6,6 +6,14 @@ import os
 from typing import List, Dict, Optional, Tuple
 from .image import ImageProcessor
 
+# Import logger
+try:
+    from core.logger import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+
 # Check for Tesseract
 HAS_OCR = False
 pytesseract = None
@@ -65,14 +73,19 @@ class OCRProcessor:
             List of cleaned text lines
         """
         if not self.has_ocr:
+            logger.warning("OCR not available - Tesseract not installed")
             return []
 
         if not os.path.exists(image_path):
+            logger.error(f"Image file not found: {image_path}")
             return []
+
+        logger.debug(f"Processing image: {os.path.basename(image_path)}")
 
         # Preprocess image
         img = self.image_processor.preprocess(image_path)
         if img is None:
+            logger.error(f"Failed to preprocess image: {image_path}")
             return []
 
         # OCR with timeout protection
@@ -90,9 +103,15 @@ class OCRProcessor:
             except RuntimeError as e:
                 # Timeout error
                 if 'Tesseract process timeout' in str(e):
+                    logger.warning(f"OCR timeout (PSM {psm}) - {timeout}s exceeded")
                     continue
-            except Exception:
+            except Exception as e:
+                logger.error(f"OCR error (PSM {psm}): {e}")
                 continue
+
+        logger.info(f"OCR extracted {len(all_text)} lines from {os.path.basename(image_path)}")
+        if all_text:
+            logger.debug(f"First 3 lines: {all_text[:3]}")
 
         return all_text
 

@@ -72,3 +72,7 @@ README.txt
 2_hasil/*
 !2_hasil/.gitkeep
 backup_vessels.json
+
+# Logs
+logs/
+*.log
