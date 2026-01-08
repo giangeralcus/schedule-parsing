@@ -10,6 +10,7 @@ pyperclip>=1.8.0
 
 # GUI
 tkinterdnd2>=0.4.0
+ttkbootstrap>=1.10.0
 
 # Utilities
 numpy>=1.24.0
