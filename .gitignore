@@ -42,11 +42,11 @@ env/
 Thumbs.db
 desktop.ini
 
-# Test files
-test_*.py
+# Test output files (not unit tests)
 TEST_*.txt
 TEST_*.md
 test_output/
+# Note: tests/ folder contains actual unit tests and should be tracked
 E2E_TEST_REPORT.md
 FINAL_E2E_TEST_RESULTS.md
 
