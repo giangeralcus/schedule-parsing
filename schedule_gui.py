@@ -48,6 +48,7 @@ from tkinter import messagebox
 from core.config import SCREENSHOTS_DIR, OUTPUT_DIR, CARRIER_MAP
 from core.parsers import parse_schedules, get_carrier_from_filename, detect_carrier
 from core.models import Schedule
+from core.vessel_db import get_vessel_db, VesselDatabase
 from processors.ocr import OCRProcessor
 from formatters.output import format_table, format_email, save_output, copy_to_clipboard
 
@@ -78,8 +79,14 @@ class ScheduleParserGUI:
         self.ocr = OCRProcessor()
         self._cached_text_lines = None  # Cache OCR results for manual carrier selection
 
+        # Initialize vessel database
+        self.vessel_db = get_vessel_db()
+
         # Build UI
         self.create_widgets()
+
+        # Update data source indicator after UI is built
+        self._update_source_indicator()
 
         # Setup drag and drop
         if HAS_DND:
@@ -93,6 +100,9 @@ class ScheduleParserGUI:
 
         # Header
         self.create_header(main)
+
+        # Data source selector
+        self.create_data_source_bar(main)
 
         # Drop zone + Preview
         self.create_drop_zone(main)
@@ -175,6 +185,124 @@ class ScheduleParserGUI:
             font=("Segoe UI", 8)
         )
         author.pack(anchor='e')
+
+    def create_data_source_bar(self, parent):
+        """Create data source selector with status indicator"""
+        source_frame = ttkb.Frame(parent)
+        source_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Left side - Data source label and selector
+        left_frame = ttkb.Frame(source_frame)
+        left_frame.pack(side=tk.LEFT)
+
+        ttkb.Label(
+            left_frame,
+            text="Data Source:",
+            font=("Segoe UI", 10)
+        ).pack(side=tk.LEFT)
+
+        self.source_var = tk.StringVar(value="cloud")
+        sources = [("Cloud (Supabase)", "cloud"), ("Local (Offline)", "offline")]
+
+        for text, value in sources:
+            if HAS_BOOTSTRAP:
+                rb = ttkb.Radiobutton(
+                    left_frame,
+                    text=text,
+                    variable=self.source_var,
+                    value=value,
+                    command=self._on_source_change,
+                    bootstyle="info-toolbutton"
+                )
+            else:
+                rb = ttkb.Radiobutton(
+                    left_frame,
+                    text=text,
+                    variable=self.source_var,
+                    value=value,
+                    command=self._on_source_change
+                )
+            rb.pack(side=tk.LEFT, padx=5)
+
+        # Right side - Status indicator
+        right_frame = ttkb.Frame(source_frame)
+        right_frame.pack(side=tk.RIGHT)
+
+        # Status indicator frame (colored box + text)
+        self.indicator_frame = ttkb.Frame(right_frame)
+        self.indicator_frame.pack(side=tk.RIGHT)
+
+        # Status dot (canvas for colored circle)
+        self.status_dot = tk.Canvas(
+            self.indicator_frame,
+            width=12,
+            height=12,
+            highlightthickness=0,
+            bg=self.root.cget('bg') if not HAS_BOOTSTRAP else '#2b3e50'
+        )
+        self.status_dot.pack(side=tk.LEFT, padx=(0, 5))
+        self.dot_id = self.status_dot.create_oval(2, 2, 10, 10, fill='gray', outline='')
+
+        # Status text
+        self.source_status_var = tk.StringVar(value="Connecting...")
+        self.source_status_label = ttkb.Label(
+            self.indicator_frame,
+            textvariable=self.source_status_var,
+            font=("Segoe UI", 9)
+        )
+        self.source_status_label.pack(side=tk.LEFT)
+
+        # Vessel count label
+        self.vessel_count_var = tk.StringVar(value="")
+        self.vessel_count_label = ttkb.Label(
+            self.indicator_frame,
+            textvariable=self.vessel_count_var,
+            font=("Segoe UI", 8)
+        )
+        self.vessel_count_label.pack(side=tk.LEFT, padx=(10, 0))
+
+    def _on_source_change(self):
+        """Handle data source change"""
+        new_source = self.source_var.get()
+        self.source_status_var.set("Switching...")
+        self.status_dot.itemconfig(self.dot_id, fill='orange')
+        self.root.update()
+
+        # Switch mode in background
+        def switch_thread():
+            success = self.vessel_db.switch_mode(new_source)
+            self.root.after(0, lambda: self._update_source_indicator())
+
+        thread = threading.Thread(target=switch_thread)
+        thread.start()
+
+    def _update_source_indicator(self):
+        """Update the source status indicator based on current connection"""
+        stats = self.vessel_db.get_stats()
+        mode = stats.get('mode', 'offline')
+        vessels = stats.get('total_vessels', 0)
+        aliases = stats.get('total_aliases', 0)
+
+        # Update radio button to match actual mode
+        if mode == 'cloud':
+            self.source_var.set('cloud')
+            self.source_status_var.set("Connected to Cloud")
+            self.status_dot.itemconfig(self.dot_id, fill='#28a745')  # Green
+        elif mode == 'docker':
+            self.source_var.set('cloud')  # Docker is also "cloud" type
+            self.source_status_var.set("Connected to Docker")
+            self.status_dot.itemconfig(self.dot_id, fill='#17a2b8')  # Cyan
+        elif mode == 'cache':
+            self.source_var.set('offline')
+            self.source_status_var.set("Using Local Cache")
+            self.status_dot.itemconfig(self.dot_id, fill='#ffc107')  # Yellow
+        else:
+            self.source_var.set('offline')
+            self.source_status_var.set("Offline Mode")
+            self.status_dot.itemconfig(self.dot_id, fill='#6c757d')  # Gray
+
+        # Update vessel count
+        self.vessel_count_var.set(f"({vessels} vessels, {aliases} aliases)")
 
     def create_drop_zone(self, parent):
         """Create drag & drop zone with optional image preview"""
