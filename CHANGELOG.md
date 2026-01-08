@@ -2,6 +2,31 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.5] - 2026-01-08
+
+### Added
+- **Carrier Confirmation Dialog** (`schedule_gui.py`)
+  - Auto-detect carrier dari OCR text
+  - Popup konfirmasi: "Carrier terdeteksi: OOCL. Lanjutkan?"
+  - User bisa confirm atau pilih carrier manual
+  - Cache OCR results untuk avoid re-processing
+
+- **Changelog Viewer** (`schedule_gui.py`)
+  - Tombol "Changelog" di header
+  - Popup window menampilkan CHANGELOG.md
+  - Version updated ke v3.2.5
+  - Contact info: giangeralcus
+
+### Fixed
+- **OOCL Parser Rewrite** (`core/parsers.py`)
+  - ETD dari kolom ke-2 (Jakarta departure), bukan CY Cutoff
+  - ETA dari kolom terakhir (final arrival)
+  - Line-based parsing: dates dari 1-5 baris sebelum vessel
+  - Voyage OCR fix: 0389S→089S, 0809S→090S, 2268→226S
+  - Pattern lebih flexible: "Vessel Voyaga:" (OCR error)
+
+---
+
 ## [3.2.4] - 2026-01-07
 
 ### Security
