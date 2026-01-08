@@ -2,6 +2,45 @@
 
 All notable changes to Schedule Parser will be documented in this file.
 
+## [3.2.7] - 2026-01-08
+
+### Fixed (Deep Code Review)
+- **CRITICAL: Dynamic Year** (`core/parsers.py`)
+  - Hardcoded 2026 → `datetime.now().year`
+  - Auto-handle Dec→Jan year rollover
+  - Parser sekarang future-proof untuk 2027+
+
+- **HIGH: Voyage OCR Correction** (`core/parsers.py`)
+  - Lebih conservative - tidak corrupt valid voyages
+  - Pattern matching lebih strict (hanya 0XX, 1XX, 2XX)
+  - "1238" sekarang tetap "1238", bukan jadi "123S"
+
+- **HIGH: Preserve Parentheses** (`processors/ocr.py`)
+  - `()[]` sekarang dipertahankan dalam text
+  - OOCL date "(Wed)" tidak lagi hilang
+
+- **MEDIUM: Division Guard** (`processors/image.py`)
+  - Minimum kernel size 10px untuk tiny images
+  - Prevent crash pada images < 300px
+
+---
+
+## [3.2.6] - 2026-01-08
+
+### Fixed
+- **Line Removal Bug** (`processors/image.py`)
+  - `cv2.add()` → `cv2.bitwise_or()` dengan inverted image
+  - Table borders sekarang benar-benar dihapus, bukan ditambahkan
+  - Cleaner OCR results untuk tabular layouts
+
+### Improved
+- **OCR Engine Upgrade** (`processors/ocr.py`)
+  - OEM 3 → OEM 1 (LSTM only) untuk akurasi lebih tinggi
+  - Added `preserve_interword_spaces=1` untuk table columns
+  - Date preservation: `10.Jan` → `10 Jan` sebelum time conversion
+
+---
+
 ## [3.2.5] - 2026-01-08
 
 ### Added

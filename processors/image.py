@@ -140,15 +140,23 @@ class ImageProcessor:
             result = binary_img.copy()
             h, w = binary_img.shape
 
-            # Remove horizontal lines
-            horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (w // 30, 1))
-            horizontal_lines = cv2.morphologyEx(binary_img, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
-            result = cv2.add(result, horizontal_lines)
+            # Invert image for line detection (lines become white on black)
+            inverted = cv2.bitwise_not(binary_img)
 
-            # Remove vertical lines
-            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, h // 30))
-            vertical_lines = cv2.morphologyEx(binary_img, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
-            result = cv2.add(result, vertical_lines)
+            # Calculate kernel sizes with minimum guard (prevent division by zero)
+            h_kernel_width = max(w // 30, 10)  # Minimum 10 pixels
+            v_kernel_height = max(h // 30, 10)  # Minimum 10 pixels
+
+            # Detect and remove horizontal lines
+            horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (h_kernel_width, 1))
+            horizontal_lines = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+            # Fill detected line areas with white (remove black lines)
+            result = cv2.bitwise_or(result, horizontal_lines)
+
+            # Detect and remove vertical lines
+            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_kernel_height))
+            vertical_lines = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+            result = cv2.bitwise_or(result, vertical_lines)
 
             return result
         except Exception:

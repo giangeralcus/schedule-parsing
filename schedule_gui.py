@@ -43,6 +43,8 @@ try:
 except ImportError:
     pass
 
+from tkinter import messagebox
+
 from core.config import SCREENSHOTS_DIR, OUTPUT_DIR, CARRIER_MAP
 from core.parsers import parse_schedules, get_carrier_from_filename, detect_carrier
 from core.models import Schedule
@@ -74,6 +76,7 @@ class ScheduleParserGUI:
         self.current_carrier = None
         self.image_reference = None
         self.ocr = OCRProcessor()
+        self._cached_text_lines = None  # Cache OCR results for manual carrier selection
 
         # Build UI
         self.create_widgets()
@@ -111,20 +114,31 @@ class ScheduleParserGUI:
         header_frame = ttkb.Frame(parent)
         header_frame.pack(fill=tk.X, pady=(0, 10))
 
+        # Left side - title and subtitle
+        left_frame = ttkb.Frame(header_frame)
+        left_frame.pack(side=tk.LEFT)
+
         if HAS_BOOTSTRAP:
             title = ttkb.Label(
-                header_frame,
-                text="📦 Schedule Parser",
+                left_frame,
+                text="📦 Schedule Parser by Geralcus",
                 font=("Segoe UI", 18, "bold"),
                 bootstyle="inverse-primary"
             )
         else:
             title = ttkb.Label(
-                header_frame,
-                text="Schedule Parser",
+                left_frame,
+                text="Schedule Parser by Geralcus",
                 font=("Segoe UI", 18, "bold")
             )
-        title.pack(side=tk.LEFT)
+        title.pack(anchor='w')
+
+        subtitle = ttkb.Label(
+            left_frame,
+            text="Convert schedule screenshots to text for email",
+            font=("Segoe UI", 9)
+        )
+        subtitle.pack(anchor='w')
 
         # Right side info
         right_frame = ttkb.Frame(header_frame)
@@ -132,14 +146,32 @@ class ScheduleParserGUI:
 
         version = ttkb.Label(
             right_frame,
-            text="v3.0 Offline",
+            text="v3.2.7",
             font=("Segoe UI", 10)
         )
         version.pack(anchor='e')
 
+        # Changelog button
+        if HAS_BOOTSTRAP:
+            changelog_btn = ttkb.Button(
+                right_frame,
+                text="Changelog",
+                command=self.show_changelog,
+                bootstyle="link",
+                width=10
+            )
+        else:
+            changelog_btn = ttkb.Button(
+                right_frame,
+                text="Changelog",
+                command=self.show_changelog,
+                width=10
+            )
+        changelog_btn.pack(anchor='e')
+
         author = ttkb.Label(
             right_frame,
-            text="Made by Gian Geralcus © 2026",
+            text="GitHub: giangeralcus",
             font=("Segoe UI", 8)
         )
         author.pack(anchor='e')
@@ -490,6 +522,13 @@ class ScheduleParserGUI:
         self.update_status("Processing...")
         self.process_btn.config(state='disabled')
 
+        # Check if we have cached text lines (user rejected auto-detect and chose manually)
+        carrier = self.carrier_var.get()
+        if hasattr(self, '_cached_text_lines') and self._cached_text_lines and carrier != "Auto-detect":
+            # Use cached text lines instead of re-running OCR
+            self._process_with_text(self._cached_text_lines, carrier)
+            return
+
         # Run in thread
         thread = threading.Thread(target=self._process_thread)
         thread.start()
@@ -533,27 +572,28 @@ class ScheduleParserGUI:
                 self.root.after(0, lambda r=reason: self._show_error("No text extracted", r))
                 return
 
-            # Step 4: Detect carrier
+            # Step 4: Check if carrier already selected manually
             carrier = self.carrier_var.get()
-            if carrier == "Auto-detect":
-                carrier = detect_carrier('\n'.join(text_lines))
 
-            self.current_carrier = carrier
+            if carrier != "Auto-detect":
+                # User already selected carrier manually - skip confirmation
+                self.current_carrier = carrier
+                schedules = parse_schedules(text_lines, carrier)
 
-            # Step 5: Parse schedules
-            schedules = parse_schedules(text_lines, carrier)
+                if not schedules:
+                    sample_text = text_lines[:3] if len(text_lines) > 3 else text_lines
+                    sample = '\n'.join(sample_text)[:150]
+                    self.root.after(0, lambda s=sample: self._show_error(
+                        "No schedules found",
+                        f"Carrier: {carrier or 'Unknown'}\nOCR extracted {len(text_lines)} lines.\nSample:\n{s}..."
+                    ))
+                    return
 
-            if not schedules:
-                # Show what was detected for debugging
-                sample_text = text_lines[:3] if len(text_lines) > 3 else text_lines
-                sample = '\n'.join(sample_text)[:150]
-                self.root.after(0, lambda s=sample: self._show_error(
-                    "No schedules found",
-                    f"Carrier: {carrier or 'Unknown'}\nOCR extracted {len(text_lines)} lines.\nSample:\n{s}..."
-                ))
-                return
-
-            self.root.after(0, lambda: self._show_results(schedules, carrier))
+                self.root.after(0, lambda: self._show_results(schedules, carrier))
+            else:
+                # Auto-detect carrier and show confirmation dialog
+                detected_carrier = detect_carrier('\n'.join(text_lines))
+                self.root.after(0, lambda: self._show_carrier_confirmation(detected_carrier, text_lines))
 
         except Exception as e:
             import traceback
@@ -607,6 +647,57 @@ class ScheduleParserGUI:
         self.process_btn.config(state='normal')
         self.update_status(f"Error: {message}", error=True)
 
+    def _show_carrier_confirmation(self, detected_carrier: str, text_lines: list):
+        """Show carrier confirmation dialog before processing"""
+        # Build dialog message
+        if detected_carrier:
+            msg = f"Carrier terdeteksi: {detected_carrier}\n\nLanjutkan dengan carrier ini?"
+            title = "Konfirmasi Carrier"
+        else:
+            msg = "Carrier tidak terdeteksi.\n\nPilih carrier secara manual dari dropdown, lalu klik Process."
+            title = "Carrier Tidak Dikenali"
+            messagebox.showwarning(title, msg)
+            self.process_btn.config(state='normal')
+            return
+
+        # Show Yes/No dialog
+        result = messagebox.askyesno(title, msg)
+
+        if result:
+            # User confirmed - proceed with detected carrier
+            self.carrier_var.set(detected_carrier)
+            self._cached_text_lines = text_lines
+            self._process_with_text(text_lines, detected_carrier)
+        else:
+            # User said No - let them choose manually
+            self.update_status("Pilih carrier manual dari dropdown, lalu klik Process")
+            self.process_btn.config(state='normal')
+            # Store text lines for later use
+            self._cached_text_lines = text_lines
+
+    def _process_with_text(self, text_lines: list, carrier: str):
+        """Process with already-extracted text lines"""
+        try:
+            # Parse schedules
+            schedules = parse_schedules(text_lines, carrier)
+
+            if not schedules:
+                # Show what was detected for debugging
+                sample_text = text_lines[:3] if len(text_lines) > 3 else text_lines
+                sample = '\n'.join(sample_text)[:150]
+                self._show_error(
+                    "No schedules found",
+                    f"Carrier: {carrier or 'Unknown'}\nOCR extracted {len(text_lines)} lines.\nSample:\n{sample}..."
+                )
+                return
+
+            self._show_results(schedules, carrier)
+
+        except Exception as e:
+            import traceback
+            err_detail = traceback.format_exc().split('\n')[-2]
+            self._show_error(f"Error: {str(e)}", err_detail)
+
     def copy_results(self):
         """Copy to clipboard"""
         if not self.current_schedules:
@@ -640,6 +731,7 @@ class ScheduleParserGUI:
         self.current_schedules = []
         self.current_carrier = None
         self.image_reference = None
+        self._cached_text_lines = None
 
         # Reset drop zone
         self.drop_canvas.delete("all")
@@ -694,6 +786,53 @@ class ScheduleParserGUI:
     def update_status(self, message, error=False):
         """Update status bar"""
         self.status_var.set(message)
+
+    def show_changelog(self):
+        """Show changelog in a popup window"""
+        changelog_path = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
+
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Changelog - Schedule Parser")
+        popup.geometry("600x500")
+        popup.transient(self.root)
+
+        # Text widget with scrollbar
+        frame = ttkb.Frame(popup, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = ttkb.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        text = tk.Text(
+            frame,
+            wrap=tk.WORD,
+            font=('Consolas', 10),
+            yscrollcommand=scrollbar.set,
+            bg='#1e2a35' if HAS_BOOTSTRAP else 'white',
+            fg='#ecf0f1' if HAS_BOOTSTRAP else 'black',
+            padx=10,
+            pady=10
+        )
+        text.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text.yview)
+
+        # Load changelog content
+        try:
+            with open(changelog_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            text.insert(tk.END, content)
+        except Exception as e:
+            text.insert(tk.END, f"Error loading changelog: {e}")
+
+        text.config(state='disabled')
+
+        # Close button
+        if HAS_BOOTSTRAP:
+            close_btn = ttkb.Button(popup, text="Close", command=popup.destroy, bootstyle="secondary")
+        else:
+            close_btn = ttkb.Button(popup, text="Close", command=popup.destroy)
+        close_btn.pack(pady=10)
 
     def run(self):
         """Start application"""

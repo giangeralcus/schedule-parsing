@@ -242,19 +242,29 @@ class CMAParser(CarrierParser):
 
 
 class OOCLParser(CarrierParser):
-    """Parser for OOCL format: Multiple formats supported"""
+    """
+    Parser for OOCL schedule format
+
+    Screenshot structure (each row):
+    - Col1: Origin date (Jakarta load)
+    - Col2: ETD (Jakarta departure) ← THIS is the real ETD
+    - Transit time (e.g., "14 Days")
+    - Col3: Arrival date 1 (transshipment)
+    - Col4: Arrival date 2 (final destination) ← THIS is the ETA
+    - Right side: CY Cutoff, Vessel Voyage
+    """
 
     name = "OOCL"
 
-    # Vessel pattern: "Vessel Voyage: COSCO ISTANBUL 089S" or standalone
-    VESSEL_VOYAGE_PATTERN = r'(?:Vessel\s*(?:/\s*)?Voyage:?\s*)?([A-Z][A-Z\s\.\-]{2,20}?)\s+(\d{3,4}[A-Z0-9]?\d*[A-Z]?)'
+    # Vessel Voyage pattern: "Vessel Voyage: COSCO ISTANBUL 089S"
+    # Flexible for OCR errors: Voyaga, Voyge, Vayage, etc.
+    VESSEL_VOYAGE_PATTERN = r'[Vv]essel\s*(?:[Vv][oay]+g[ae]?)?:?\s*([A-Z][A-Z\s\.\-]{2,20}?)\s+(\d{2,4}[SNsn8]?)'
 
-    # CY Cutoff - flexible for OCR errors: Cutof, Cute, Cuter, etc.
-    # Also handles '(' read as '1' by OCR
-    CY_CUTOFF_PATTERN = r'CY\s*Cut[oeu]?[fr]?[f]?:?\s*(\d{4}-\d{2}-\d{2})\d?\s*[\(\[]?\w{2,3}[\)\]]?\s*(\d{1,2}:\d{2})'
+    # CY Cutoff pattern: "CY Cutoff: 2026-01-07(Wed) 23:00"
+    CY_CUTOFF_PATTERN = r'CY\s*Cut[oeu]?[fr]?[f]?:?\s*(\d{4}-\d{2}-\d{2})\s*[\(\[]?(\w{2,3})[\)\]]?\s*(\d{1,2}:\d{2})'
 
-    # Date with weekday: "07 Jan (Wed)" or "07 Jan Wee" (OCR error)
-    DATE_WEEKDAY_PATTERN = r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*[\(\[]?(\w{2,3})[\)\]]?'
+    # Date with weekday: "07 Jan (Wed)" or "10 Jan Sat" or "10.Jan Sat" (dot separator)
+    DATE_PATTERN = r'(\d{1,2})[\s\.](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*[\(\[]?([A-Za-z]{2,3})[\)\]]?'
 
     def can_parse(self, text: str) -> bool:
         text_lower = text.lower()
@@ -262,85 +272,169 @@ class OOCLParser(CarrierParser):
                 'vessel voyage' in text_lower or 'transshipment' in text_lower)
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
-        full_text = '\n'.join(text_lines)
+        from datetime import datetime, timedelta
+
         schedules = []
-
-        # Extract CY Cutoff dates (ETD with time)
-        cutoff_matches = re.findall(self.CY_CUTOFF_PATTERN, full_text, re.IGNORECASE)
-
-        # Extract vessel/voyage pairs
-        vessel_matches = re.findall(self.VESSEL_VOYAGE_PATTERN, full_text)
-
-        # Extract all dates for ETA calculation
-        date_matches = re.findall(self.DATE_WEEKDAY_PATTERN, full_text, re.IGNORECASE)
-
-        # Filter valid vessels
-        skip_words = ['SERVICE', 'VOYAGE', 'VESSEL', 'CUTOFF', 'CY CUT', 'JAKARTA',
-                      'CHENNAI', 'BANGALORE', 'DOOR', 'CARGO', 'NATURE', 'TANK',
-                      'EMISSIONS', 'DAYS', 'TRANSSHIPMENT', 'SI CUT', 'FCS', 'SL',
-                      'WELL', 'WAKE', 'TEU']
-        valid_vessels = []
-        for vessel, voyage in vessel_matches:
-            v_upper = vessel.strip().upper()
-            if v_upper not in skip_words and len(v_upper) >= 3:
-                if re.search(r'[A-Z]{3,}', v_upper) and not v_upper.startswith('CY'):
-                    valid_vessels.append((vessel.strip(), voyage.strip()))
-
-        # Group dates by schedule row (approximately 4-5 dates per row)
-        # Find unique date groups by looking at patterns
-        
-        # Build schedules
         seen = set()
-        cutoff_idx = 0
-        date_idx = 0
-        
-        for i, (vessel, voyage) in enumerate(valid_vessels):
-            vessel_clean = self.normalize_vessel(vessel)
-            voyage_clean = voyage.upper()
 
-            key = f"{vessel_clean}|{voyage_clean}"
+        # Skip words for vessel name filtering
+        skip_words = {'SERVICE', 'VOYAGE', 'VESSEL', 'CUTOFF', 'JAKARTA', 'CHENNAI',
+                      'BANGALORE', 'BRISBANE', 'DOOR', 'CARGO', 'NATURE', 'TANK',
+                      'EMISSIONS', 'DAYS', 'TRANSSHIPMENT', 'WELL', 'WAKE', 'TEU',
+                      'SORT', 'FILTER', 'MORE', 'BOOKING', 'DIRECT', 'FCS', 'SL'}
+
+        # Line-based parsing: find vessel lines and look back for dates
+        for line_idx, line in enumerate(text_lines):
+            # Find Vessel Voyage in this line
+            vessel_match = re.search(self.VESSEL_VOYAGE_PATTERN, line)
+            if not vessel_match:
+                continue
+
+            vessel_name = vessel_match.group(1).strip().upper()
+            voyage = vessel_match.group(2).strip().upper()
+
+            # Skip invalid vessels
+            if vessel_name in skip_words or len(vessel_name) < 3:
+                continue
+            if not re.search(r'[A-Z]{3,}', vessel_name):
+                continue
+
+            vessel_clean = self.normalize_vessel(vessel_name)
+
+            # Fix voyage OCR errors
+            voyage = self._fix_voyage_ocr(voyage)
+
+            # Skip exact duplicates
+            key = f"{vessel_clean}|{voyage}"
             if key in seen:
                 continue
             seen.add(key)
 
-            # ETD from CY Cutoff
-            etd = None
-            if cutoff_idx < len(cutoff_matches):
-                date_part, time_part = cutoff_matches[cutoff_idx]
-                from datetime import datetime
-                try:
-                    dt = datetime.strptime(date_part, "%Y-%m-%d")
-                    etd = dt.strftime("%d %b %Y") + f", {time_part}"
-                except:
-                    etd = f"{date_part}, {time_part}"
-                # Move to next cutoff every 2 vessels (transshipment pairs)
-                if i % 2 == 1:
-                    cutoff_idx += 1
+            # Look for dates in previous 3-5 lines
+            # Find the line with MOST dates (usually the main date row has 4-5 dates)
+            dates = []
+            best_line_dates = []
+            for lookback in range(1, 6):
+                if line_idx - lookback < 0:
+                    break
+                prev_line = text_lines[line_idx - lookback]
 
-            # ETA - find the last date in each schedule row
-            # Each row has about 4-5 dates, we want the last one (arrival)
+                # Stop if we hit another vessel line (previous schedule)
+                if re.search(r'Vessel\s*[Vv]', prev_line):
+                    break
+
+                line_dates = re.findall(self.DATE_PATTERN, prev_line, re.IGNORECASE)
+                if line_dates:
+                    # Filter out invalid dates (OCR errors like 48 Jan)
+                    valid_dates = [(d, m) for d, m, _ in line_dates if int(d) <= 31]
+                    # Keep the line with the MOST dates (main date row usually has 4+ dates)
+                    if len(valid_dates) > len(best_line_dates):
+                        best_line_dates = valid_dates
+            dates = best_line_dates
+
+            # Extract ETD (2nd date) and ETA (last date)
+            etd = None
             eta = None
-            if date_matches:
-                # Calculate which date group we're in
-                row_num = i // 2  # 2 vessels per row
-                base_date_idx = row_num * 5 + 4  # 5 dates per row, get the 5th (last)
-                if base_date_idx < len(date_matches):
-                    day, month, _ = date_matches[base_date_idx]
-                    eta = f"{day} {month} 2026"
-                elif len(date_matches) > 0:
-                    # Fallback to last date
-                    day, month, _ = date_matches[-1]
-                    eta = f"{day} {month} 2026"
+            current_year = datetime.now().year
+            current_month = datetime.now().month
+
+            def get_year_for_month(month_str: str) -> int:
+                """Determine year based on month - handle Dec->Jan rollover"""
+                month_map = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                            'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+                month_num = month_map.get(month_str.lower()[:3], current_month)
+                # If current is Dec and date is Jan-Mar, use next year
+                if current_month >= 11 and month_num <= 3:
+                    return current_year + 1
+                return current_year
+
+            if len(dates) >= 2:
+                # ETD is the 2nd date (departure from Jakarta)
+                etd_year = get_year_for_month(dates[1][1])
+                etd = f"{int(dates[1][0]):02d} {dates[1][1]} {etd_year}"
+                # ETA is the last date (final arrival)
+                eta_year = get_year_for_month(dates[-1][1])
+                eta = f"{int(dates[-1][0]):02d} {dates[-1][1]} {eta_year}"
+            elif len(dates) == 1:
+                etd_year = get_year_for_month(dates[0][1])
+                etd = f"{int(dates[0][0]):02d} {dates[0][1]} {etd_year}"
+
+            # Fallback: look for CY Cutoff and estimate ETD
+            if not etd:
+                for lookback in range(1, 4):
+                    if line_idx - lookback < 0:
+                        break
+                    prev_line = text_lines[line_idx - lookback]
+                    cy_match = re.search(self.CY_CUTOFF_PATTERN, prev_line, re.IGNORECASE)
+                    if cy_match:
+                        try:
+                            cutoff_date = datetime.strptime(cy_match.group(1), "%Y-%m-%d")
+                            etd_dt = cutoff_date + timedelta(days=3)
+                            etd = etd_dt.strftime("%d %b %Y")
+                        except:
+                            pass
+                        break
 
             schedules.append(Schedule(
                 vessel=vessel_clean,
-                voyage=voyage_clean,
+                voyage=voyage,
                 etd=etd,
                 eta=eta,
                 carrier=self.name
             ))
 
         return schedules
+
+    def _fix_voyage_ocr(self, voyage: str) -> str:
+        """Fix common OCR errors in voyage numbers.
+
+        Standard OOCL voyage format: 3 digits + direction (N/S/E/W)
+        Examples: 089S, 090N, 226S
+
+        Common OCR errors:
+        - 'S' misread as '8' (226S -> 2268)
+        - Extra garbage digit inserted (089S -> 0389S)
+        """
+        original = voyage
+
+        # Already has valid format (3 digits + letter)? Keep it
+        if re.match(r'^\d{3}[SNEW]$', voyage, re.IGNORECASE):
+            return voyage.upper()
+
+        # 4 digits ending with 8: likely OCR misread S as 8
+        # Only apply if pattern looks like voyage (not random number)
+        # 2268 -> 226S, but NOT 1238 -> 123S (could be valid)
+        if re.match(r'^[012]\d{2}8$', voyage):
+            # Starts with 0, 1, or 2 - likely voyage with 8->S error
+            voyage = voyage[:-1] + 'S'
+
+        # 5-char voyages: OCR inserted extra digit
+        # 0389S -> 089S, 0809S -> 090S
+        if len(voyage) == 5 and voyage[-1].upper() in 'SNEW':
+            digits = voyage[:-1]
+            suffix = voyage[-1].upper()
+            if digits[0] == '0':
+                # Likely format 0XXX -> 0XX (remove middle garbage)
+                if digits[2] == '0':
+                    # 0809 -> 090 (0 + 9 + 0)
+                    voyage = digits[0] + digits[3] + digits[2] + suffix
+                else:
+                    # 0389 -> 089 (0 + 8 + 9)
+                    voyage = digits[0] + digits[2] + digits[3] + suffix
+
+        # 4-char with letter: first digit might be garbage
+        # 389S -> 089S (3 is garbage OCR)
+        if len(voyage) == 4 and voyage[-1].upper() in 'SNEW':
+            if voyage[0] in '3456789' and voyage[1] in '0123456789':
+                # First digit looks wrong for voyage, replace with 0
+                voyage = '0' + voyage[1:]
+
+        # If still no letter suffix but looks like voyage, add S (most common)
+        # Only for 3-digit numbers that look like voyages
+        if re.match(r'^[012]\d{2}$', voyage):
+            voyage = voyage + 'S'
+
+        return voyage.upper()
 
 
 

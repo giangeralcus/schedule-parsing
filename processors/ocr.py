@@ -79,7 +79,8 @@ class OCRProcessor:
         all_text = []
         for psm in self.psm_modes:
             try:
-                config = f'--oem 3 --psm {psm}'
+                # OEM 1 (LSTM only) for best accuracy, preserve spacing for tables
+                config = f'--oem 1 --psm {psm} -c preserve_interword_spaces=1'
                 text = pytesseract.image_to_string(img, config=config, timeout=timeout)
 
                 for line in text.split('\n'):
@@ -140,15 +141,19 @@ class OCRProcessor:
         if not text:
             return ""
 
-        # Fix common OCR errors in times
+        # FIRST: Preserve date patterns with dot separators (10.Jan -> 10 Jan)
+        text = re.sub(r'(\d{1,2})\.(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', r'\1 \2', text, flags=re.IGNORECASE)
+
+        # Fix common OCR errors in times (AFTER date preservation)
         text = re.sub(r'(\d{1,2})\.(\d{2})(?!\d)', r'\1:\2', text)
         text = re.sub(r'(\d{1,2}),(\d{2})(?!\d)', r'\1:\2', text)
 
         # Fix month spacing
         text = re.sub(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{4})', r'\1 \2', text)
 
-        # Remove garbage characters but keep essential punctuation
-        text = re.sub(r'[^A-Za-z0-9\s\-\.,:\/]', '', text)
+        # Remove garbage characters but keep essential punctuation and parentheses
+        # Parentheses needed for OOCL date format like "07 Jan (Wed)"
+        text = re.sub(r'[^A-Za-z0-9\s\-\.,:\/\(\)\[\]]', '', text)
 
         # Clean up multiple spaces
         text = re.sub(r'\s+', ' ', text)
