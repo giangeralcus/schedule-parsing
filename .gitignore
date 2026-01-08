@@ -46,11 +46,20 @@ desktop.ini
 test_*.py
 TEST_*.txt
 TEST_*.md
+test_output/
+E2E_TEST_REPORT.md
+FINAL_E2E_TEST_RESULTS.md
 
 # Temporary
 *.tmp
 *.temp
 *.log
+nul
+
+# Local scripts & notes
+parse.bat
+run.bat
+README.txt
 
 # Environment (secrets)
 .env
