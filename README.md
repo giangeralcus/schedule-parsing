@@ -1,4 +1,4 @@
-# Schedule Parser v3.2
+# Schedule Parser v3.2.7
 
 Tool OCR untuk mengubah screenshot jadwal kapal menjadi text yang siap dikirim via email.
 
@@ -81,6 +81,8 @@ Opsi 2:
 | Maersk | ✅ Full | ✅ |
 | CMA CGM | ✅ Full | ✅ |
 | OOCL | ✅ Full | ✅ |
+| Evergreen | 🟡 Partial | ✅ |
+| ONE (Ocean Network Express) | 🟡 Partial | ✅ |
 | Hapag-Lloyd | 🔄 Planned | - |
 | MSC | 🔄 Planned | - |
 
@@ -88,13 +90,23 @@ Opsi 2:
 
 ```
 schedule-parsing/
-├── schedule_gui.py       # Aplikasi GUI
-├── schedule_parser.py    # Aplikasi CLI
+├── schedule_gui.py       # Aplikasi GUI (drag-and-drop)
+├── schedule_parser.py    # Aplikasi CLI (menu interaktif)
 ├── core/                 # Logic parser
-├── processors/           # OCR processing
+│   ├── parsers.py       # Carrier-specific parsers
+│   ├── models.py        # Schedule/ParseResult dataclasses
+│   ├── vessel_db.py     # Database vessel (Supabase/offline)
+│   └── config.py        # Konfigurasi
+├── processors/           # OCR & image processing
+│   ├── ocr.py           # Tesseract wrapper
+│   └── image.py         # Preprocessing pipeline
 ├── formatters/           # Format output
-├── 1_screenshots/        # Taruh screenshot disini
-└── 2_hasil/              # Hasil output
+│   └── output.py        # Table & email formatter
+├── data/                 # Database files
+│   └── vessels_cache.json
+├── tests/               # Unit tests
+├── 1_screenshots/        # Input: taruh screenshot disini
+└── 2_hasil/              # Output: hasil parsing
 ```
 
 ## Teknologi
@@ -109,11 +121,13 @@ schedule-parsing/
 
 Lihat [CHANGELOG.md](CHANGELOG.md) untuk history lengkap.
 
-### Update Terbaru (v3.2.5)
+### Update Terbaru (v3.2.7)
+- Dynamic year handling (future-proof untuk 2027+)
+- Conservative voyage OCR correction
+- Parentheses preservation untuk dates
 - Auto-detect carrier dengan konfirmasi
 - Parser OOCL lebih akurat
-- Security improvements
-- Image deskew otomatis
+- Security improvements (file size limit, magic bytes validation)
 
 ## Author
 
