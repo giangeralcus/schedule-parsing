@@ -54,6 +54,7 @@
     "AS PIA": "AS PIA",
     "OOCL TEXAS": "OOCL TEXAS",
     "RIO GRANDE": "RIO GRANDE",
+    "HOURS MARTIN SCHULTE": "MARTIN SCHULTE",
     "EVER GOLD3N": "EVER GOLDEN",
     "CNC JUPTER": "CNC JUPITER",
     "DANUM 17S": "DANUM 175",
@@ -69,7 +70,8 @@
     "COSCOADEN": "COSCO ADEN",
     "COSCO ADEN": "COSCO ADEN",
     "COSCO A\u0414\u0415\u041d": "COSCO ADEN",
-    "TENDERSOUL": "TENDER SOUL"
+    "TENDERSOUL": "TENDER SOUL",
+    "SDAYSSHOURSJULIUS-S.": "JULIUS-S."
   },
   "vessel_ids": {
     "DANUM 175": "bbc63bd3-b264-420d-9943-ab2e78c11dc1",
@@ -96,6 +98,6 @@
     "SEASPAN GUAYAQUIL": "6af0dad5-d075-4cef-b5f1-7500d9d32081",
     "MARSA PRIDE": "210d87ff-964c-48a6-b6a5-00b2d80da7b1"
   },
-  "updated_at": "2026-01-09T09:30:27.857315",
+  "updated_at": "2026-01-09T10:48:32.813864",
   "source": "cloud"
 }

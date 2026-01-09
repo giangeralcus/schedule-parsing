@@ -8,6 +8,9 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCREENSHOTS_DIR = os.path.join(SCRIPT_DIR, "1_screenshots")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "2_hasil")
 
+# Default browse location for file dialog (Windows Screenshots folder)
+DEFAULT_BROWSE_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "Screenshots")
+
 # Create folders
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)

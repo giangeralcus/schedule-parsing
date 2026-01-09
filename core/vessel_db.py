@@ -34,13 +34,17 @@ except ImportError:
     pass
 
 try:
-    from rapidfuzz import fuzz, process
+    from rapidfuzz import fuzz, process, utils as fuzz_utils
     HAS_FUZZY = True
+    HAS_RAPIDFUZZ = True
 except ImportError:
+    HAS_RAPIDFUZZ = False
     try:
         from thefuzz import fuzz, process
+        fuzz_utils = None  # thefuzz doesn't have utils
         HAS_FUZZY = True
     except ImportError:
+        fuzz_utils = None
         pass
 
 
@@ -292,11 +296,23 @@ class VesselDatabase:
         # Step 2: Fuzzy match
         if HAS_FUZZY and self._vessels:
             vessel_names = list(self._vessels.values())
-            result = process.extractOne(
-                ocr_clean,
-                vessel_names,
-                scorer=fuzz.token_sort_ratio
-            )
+
+            # Use WRatio (best general-purpose scorer) with preprocessing
+            # WRatio automatically selects best strategy from multiple algorithms
+            if HAS_RAPIDFUZZ and fuzz_utils:
+                result = process.extractOne(
+                    ocr_clean,
+                    vessel_names,
+                    scorer=fuzz.WRatio,
+                    processor=fuzz_utils.default_process  # Case-insensitive + handles special chars
+                )
+            else:
+                # Fallback for thefuzz (no utils module)
+                result = process.extractOne(
+                    ocr_clean,
+                    vessel_names,
+                    scorer=fuzz.token_sort_ratio
+                )
 
             if result and result[1] >= self.fuzzy_threshold:
                 matched_name = result[0]

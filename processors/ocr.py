@@ -51,11 +51,15 @@ except ImportError:
 class OCRProcessor:
     """OCR text extraction with multiple passes and confidence scoring"""
 
+    # Character whitelist for shipping schedules
+    # Includes: letters, numbers, common separators, parentheses for dates like "(Wed)"
+    CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/:.,() "
+
     def __init__(self, confidence_threshold: int = 30):
         self.confidence_threshold = confidence_threshold
         self.image_processor = ImageProcessor()
         self.has_ocr = HAS_OCR
-        self.psm_modes = [6]  # Single pass for cleaner results  # Different page segmentation modes
+        self.psm_modes = [6]  # Single pass for cleaner results
 
     def is_available(self) -> bool:
         """Check if OCR is available"""
@@ -93,7 +97,12 @@ class OCRProcessor:
         for psm in self.psm_modes:
             try:
                 # OEM 1 (LSTM only) for best accuracy, preserve spacing for tables
-                config = f'--oem 1 --psm {psm} -c preserve_interword_spaces=1'
+                # Character whitelist reduces garbage characters from OCR
+                config = (
+                    f'--oem 1 --psm {psm} '
+                    f'-c preserve_interword_spaces=1 '
+                    f'-c tessedit_char_whitelist={self.CHAR_WHITELIST}'
+                )
                 text = pytesseract.image_to_string(img, config=config, timeout=timeout)
 
                 for line in text.split('\n'):

@@ -45,7 +45,7 @@ except ImportError:
 
 from tkinter import messagebox
 
-from core.config import SCREENSHOTS_DIR, OUTPUT_DIR, CARRIER_MAP
+from core.config import SCREENSHOTS_DIR, OUTPUT_DIR, CARRIER_MAP, DEFAULT_BROWSE_DIR
 from core.parsers import parse_schedules, get_carrier_from_filename, detect_carrier
 from core.models import Schedule
 from core.vessel_db import get_vessel_db, VesselDatabase
@@ -554,9 +554,17 @@ class ScheduleParserGUI:
         """Open file browser"""
         from tkinter import filedialog
 
+        # Priority: DEFAULT_BROWSE_DIR (Screenshots) > SCREENSHOTS_DIR > Home
+        if os.path.exists(DEFAULT_BROWSE_DIR):
+            initial_dir = DEFAULT_BROWSE_DIR
+        elif os.path.exists(SCREENSHOTS_DIR):
+            initial_dir = SCREENSHOTS_DIR
+        else:
+            initial_dir = os.path.expanduser("~")
+
         file_path = filedialog.askopenfilename(
             title="Select Screenshot",
-            initialdir=SCREENSHOTS_DIR if os.path.exists(SCREENSHOTS_DIR) else os.path.expanduser("~"),
+            initialdir=initial_dir,
             filetypes=[
                 ("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif"),
                 ("All files", "*.*")
