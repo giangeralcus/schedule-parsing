@@ -814,8 +814,19 @@ class ScheduleParserGUI:
     def _process_with_text(self, text_lines: list, carrier: str):
         """Process with already-extracted text lines"""
         try:
-            # Parse schedules
-            schedules = parse_schedules(text_lines, carrier)
+            schedules = []
+
+            # ULTRATHINK: Try TSV + Bounding Box method first for Maersk
+            # This provides better spatial analysis for multi-column tables
+            if carrier == 'MAERSK' and self.current_file:
+                tsv_schedules = self._try_tsv_maersk()
+                if tsv_schedules:
+                    schedules = tsv_schedules
+                    logger.info(f"TSV method succeeded: {len(schedules)} schedules")
+
+            # Fallback to text-based parsing
+            if not schedules:
+                schedules = parse_schedules(text_lines, carrier)
 
             if not schedules:
                 # Show what was detected for debugging
@@ -833,6 +844,46 @@ class ScheduleParserGUI:
             import traceback
             err_detail = traceback.format_exc().split('\n')[-2]
             self._show_error(f"Error: {str(e)}", err_detail)
+
+    def _try_tsv_maersk(self) -> list:
+        """
+        Try TSV + Bounding Box method for Maersk schedules
+
+        Uses spatial analysis to properly parse multi-column tables,
+        filtering out Deadlines section.
+
+        Returns:
+            List of Schedule objects or empty list if failed
+        """
+        if not self.current_file:
+            return []
+
+        try:
+            from core.vessel_db import match_vessel
+
+            # Use OCR's TSV extraction method
+            tsv_results = self.ocr.extract_maersk_schedules(self.current_file)
+
+            if not tsv_results:
+                return []
+
+            # Convert to Schedule objects
+            schedules = []
+            for item in tsv_results:
+                vessel_name = match_vessel(item['vessel'])
+                schedules.append(Schedule(
+                    vessel=vessel_name,
+                    voyage=item['voyage'],
+                    etd=item['departure'],
+                    eta=item['arrival'],
+                    carrier='MAERSK'
+                ))
+
+            return schedules
+
+        except Exception as e:
+            logger.warning(f"TSV method failed: {e}")
+            return []
 
     def copy_results(self):
         """Copy to clipboard"""

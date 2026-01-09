@@ -89,59 +89,243 @@ class CarrierParser(ABC):
 
 
 class MaerskParser(CarrierParser):
-    """Parser for Maersk format: VESSEL / VOYAGE or VESSEL VOYAGE with datetime"""
+    """
+    ULTRATHINK Parser for Maersk format (2026)
+
+    Website structure (3-column layout):
+    ┌─────────────────┬─────────────────┬─────────────────┐
+    │ Departure       │ Arrival         │ Vessel/Voyage   │
+    │ 18 Jan 2026     │ 27 Jan 2026     │ JULIUS-S. 603N  │
+    │ PT New Priok... │ Laem Chabang... │ Transit Time... │
+    └─────────────────┴─────────────────┴─────────────────┘
+
+    OCR output patterns:
+    1. "Departure Arrival Vessel/Voyage" (header line)
+    2. "18 Jan 2026 27 Jan 2026 JULIUS-S. 603N" (data line)
+    3. Or vertical: "Departure\\n18 Jan 2026\\nArrival\\n27 Jan..."
+
+    IMPORTANT: Ignore "Deadlines" section dates (container gate-in, etc.)
+    """
 
     name = "MAERSK"
 
-    # Pattern 1: "SPIL NISAKA / 602N" (with slash separator)
-    VESSEL_PATTERN_SLASH = r'([A-Za-z][A-Za-z\s\.\-]{2,25}?)\s*/\s*(\d{3,4}[A-Z]?)'
+    # Date pattern: "18 Jan 2026" or "04 Feb 2026"
+    DATE_PATTERN = r'(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*\d{4})'
 
-    # Pattern 2: "SPIL NIKEN 602N" (no slash, space only)
-    # Matches: vessel name (2+ words or single word) + voyage (3-4 digits + letter)
-    VESSEL_PATTERN_NO_SLASH = r'\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+(\d{3,4}[A-Z])\b'
+    # Vessel/Voyage patterns
+    # Pattern: "JULIUS-S. 603N" or "SKY PEACE 604N" or "Martin Schulte 605N"
+    VESSEL_VOYAGE = r'([A-Z][A-Za-z\.\-\_]+(?:[\s\-][A-Za-z\.\-\_]+)?)\s*[:\s]+(\d{3,4}[A-Z])'
 
-    # Pattern: "16 Jan 2026, 19:00"
-    DATE_PATTERN = r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})[,\s]+(\d{1,2}:\d{2})'
+    # Skip words - NOT vessel names
+    SKIP_WORDS = {'VESSEL', 'VOYAGE', 'SERVICE', 'MAERSK', 'PORT', 'TERMINAL',
+                  'DEPARTURE', 'ARRIVAL', 'CUTOFF', 'CUT', 'OFF', 'DATE', 'TIME',
+                  'TRANSIT', 'EMPTY', 'CONTAINER', 'SHIPPING', 'INSTRUCTIONS',
+                  'DEADLINE', 'GATE', 'PICKUP', 'VERIFIED', 'GROSS', 'MASS',
+                  'DANGEROUS', 'GOODS', 'DECLARATION', 'BOOK', 'NOW', 'GET', 'QUOTE',
+                  'LAEM', 'CHABANG', 'PRIOK', 'JAKARTA', 'THAILAND', 'INDONESIA'}
+
+    # OCR error corrections for dates
+    MONTH_CORRECTIONS = {
+        'Febi': 'Feb', 'Jani': 'Jan', 'Mari': 'Mar', 'Apri': 'Apr',
+        'Juni': 'Jun', 'Juli': 'Jul', 'Augi': 'Aug', 'Sepi': 'Sep',
+        'Octi': 'Oct', 'Novi': 'Nov', 'Deci': 'Dec'
+    }
+
+    def _clean_ocr_line(self, line: str) -> str:
+        """Clean common OCR errors in a line"""
+        result = line
+
+        # Fix "O" mistaken for "0" at start of date-like patterns
+        # e.g., "O1/Feb" -> "01 Feb", "O8 Jan" -> "08 Jan"
+        result = re.sub(r'\bO(\d)', r'0\1', result)
+
+        # Fix colons/slashes in dates: "04:Feb:2026" -> "04 Feb 2026"
+        result = re.sub(r'(\d{1,2})[:\/]([A-Za-z]{3,})[:\.]?(\d{4})', r'\1 \2 \3', result)
+
+        # Fix missing space between day and month: "28Jan" -> "28 Jan"
+        result = re.sub(r'(\d{1,2})([A-Za-z]{3})', r'\1 \2', result)
+
+        # Fix month OCR typos
+        for wrong, correct in self.MONTH_CORRECTIONS.items():
+            result = result.replace(wrong, correct)
+
+        return result
 
     def can_parse(self, text: str) -> bool:
-        has_slash = bool(re.search(self.VESSEL_PATTERN_SLASH, text))
-        has_no_slash = bool(re.search(self.VESSEL_PATTERN_NO_SLASH, text))
-        has_date_time = bool(re.search(self.DATE_PATTERN, text, re.IGNORECASE))
-        has_maersk = 'maersk' in text.lower() or '/voyage' in text.lower()
-        # Slash format always works, no-slash requires date/time pattern
-        return has_slash or (has_no_slash and has_date_time) or has_maersk
+        text_lower = text.lower()
+        has_departure = 'departure' in text_lower
+        has_arrival = 'arrival' in text_lower
+        has_vessel_voyage = 'vessel' in text_lower or '/voyage' in text_lower
+        has_maersk = 'maersk' in text_lower
+        return (has_departure and has_arrival) or has_vessel_voyage or has_maersk
 
     def parse(self, text_lines: List[str]) -> List[Schedule]:
+        """
+        ULTRATHINK Multi-Strategy Parser
+
+        Strategy 1: Line-by-line parsing - find lines with 2 dates + vessel/voyage
+        Strategy 2: Block parsing - find Departure/Arrival sections
+        Strategy 3: Legacy fallback
+        """
+        schedules = []
+
+        # Try Strategy 1 first (most reliable for current Maersk format)
+        schedules = self._parse_inline_format(text_lines)
+
+        # If no results, try Strategy 2
+        if not schedules:
+            schedules = self._parse_block_format(text_lines)
+
+        # If still no results, try legacy
+        if not schedules:
+            schedules = self._parse_legacy(text_lines)
+
+        return schedules
+
+    def _parse_inline_format(self, text_lines: List[str]) -> List[Schedule]:
+        """
+        Strategy 1: Parse lines that contain [DATE] [DATE] [VESSEL VOYAGE]
+
+        Example OCR line: "18 Jan 2026 27 Jan 2026 JULIUS-S. 603N"
+        """
+        schedules = []
+
+        for raw_line in text_lines:
+            # Clean OCR errors first
+            line = self._clean_ocr_line(raw_line)
+
+            # Skip lines that are clearly headers or deadlines
+            line_upper = line.upper()
+            if any(skip in line_upper for skip in ['DEADLINE', 'EMPTY CONTAINER', 'GATE-IN',
+                                                    'SHIPPING INSTRUCTION', 'VERIFIED GROSS']):
+                continue
+
+            # Find all dates in this line
+            dates = re.findall(self.DATE_PATTERN, line, re.IGNORECASE)
+
+            # Find vessel/voyage in this line
+            vessel_match = re.search(self.VESSEL_VOYAGE, line)
+
+            # If we have 2 dates and a vessel/voyage, this is a schedule line
+            if len(dates) >= 2 and vessel_match:
+                vessel_name = vessel_match.group(1).strip()
+                voyage = vessel_match.group(2).strip().upper()
+
+                # Skip if vessel name is a skip word
+                if vessel_name.upper() in self.SKIP_WORDS:
+                    continue
+
+                vessel_normalized = self.normalize_vessel(vessel_name)
+                etd = self._normalize_date(dates[0])
+                eta = self._normalize_date(dates[1])
+
+                schedules.append(Schedule(
+                    vessel=vessel_normalized,
+                    voyage=voyage,
+                    etd=etd,
+                    eta=eta,
+                    carrier=self.name
+                ))
+
+        return schedules
+
+    def _parse_block_format(self, text_lines: List[str]) -> List[Schedule]:
+        """
+        Strategy 2: Parse block format where Departure/Arrival are separate sections
+
+        Structure:
+        Departure
+        18 Jan 2026
+        ...
+        Arrival
+        27 Jan 2026
+        ...
+        Vessel/Voyage
+        JULIUS-S. 603N
+        """
+        schedules = []
+        full_text = '\n'.join(text_lines)
+
+        # Find all vessel/voyage matches with their positions
+        vessel_matches = []
+        for match in re.finditer(self.VESSEL_VOYAGE, full_text):
+            vessel_name = match.group(1).strip()
+            voyage = match.group(2).strip().upper()
+
+            if vessel_name.upper() in self.SKIP_WORDS:
+                continue
+
+            vessel_matches.append({
+                'vessel': self.normalize_vessel(vessel_name),
+                'voyage': voyage,
+                'pos': match.start(),
+                'end': match.end()
+            })
+
+        # Find "Departure" labels with following dates
+        dep_pattern = r'[Dd]eparture\s*[\n\r:]+\s*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*\d{4})'
+        departure_matches = [(m.group(1), m.start()) for m in re.finditer(dep_pattern, full_text)]
+
+        # Find "Arrival" labels with following dates
+        arr_pattern = r'[Aa]rrival\s*[\n\r:]+\s*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*\d{4})'
+        arrival_matches = [(m.group(1), m.start()) for m in re.finditer(arr_pattern, full_text)]
+
+        # Match each vessel with nearest preceding departure/arrival
+        for vessel_info in vessel_matches:
+            vessel_pos = vessel_info['pos']
+
+            # Find nearest departure BEFORE this vessel
+            etd = None
+            for dep_date, dep_pos in departure_matches:
+                if dep_pos < vessel_pos:
+                    etd = self._normalize_date(dep_date)
+
+            # Find nearest arrival BEFORE this vessel
+            eta = None
+            for arr_date, arr_pos in arrival_matches:
+                if arr_pos < vessel_pos:
+                    eta = self._normalize_date(arr_date)
+
+            if etd or eta:
+                # Check if this vessel already exists (avoid duplicates)
+                exists = any(s.voyage == vessel_info['voyage'] for s in schedules)
+                if not exists:
+                    schedules.append(Schedule(
+                        vessel=vessel_info['vessel'],
+                        voyage=vessel_info['voyage'],
+                        etd=etd,
+                        eta=eta,
+                        carrier=self.name
+                    ))
+
+        return schedules
+
+    def _parse_legacy(self, text_lines: List[str]) -> List[Schedule]:
+        """Strategy 3: Legacy format with slash separator "VESSEL / VOYAGE" """
         full_text = '\n'.join(text_lines)
         schedules = []
 
-        # Try slash pattern first, then no-slash pattern
-        vessel_matches = re.findall(self.VESSEL_PATTERN_SLASH, full_text)
-        if not vessel_matches:
-            vessel_matches = re.findall(self.VESSEL_PATTERN_NO_SLASH, full_text)
-
-        # Skip words that aren't vessel names (common OCR false positives)
-        skip_words = ['VESSEL', 'VOYAGE', 'SERVICE', 'MAERSK', 'PORT', 'TERMINAL',
-                      'DEPARTURE', 'ARRIVAL', 'CUTOFF', 'CUT', 'OFF', 'DATE', 'TIME']
+        # Pattern: "SPIL NISAKA / 602N"
+        slash_pattern = r'([A-Za-z][A-Za-z\s\.\-]{2,25}?)\s*/\s*(\d{3,4}[A-Z]?)'
+        vessel_matches = re.findall(slash_pattern, full_text)
 
         vessels = {}
         for v, voyage in vessel_matches:
             voyage = voyage.strip().upper()
             v_clean = v.strip()
-            v_upper = v_clean.upper()
 
-            # Skip false positives
-            if v_upper in skip_words or any(skip in v_upper for skip in skip_words):
+            if v_clean.upper() in self.SKIP_WORDS:
                 continue
 
             v_normalized = self.normalize_vessel(v_clean)
-            if len(v_normalized) >= 3 and voyage[-1:].isalpha() and voyage not in vessels:
+            if len(v_normalized) >= 3 and voyage not in vessels:
                 vessels[voyage] = v_normalized
 
-        # Find dates with times
-        date_matches = re.findall(self.DATE_PATTERN, full_text, re.IGNORECASE)
+        # Find dates with times "16 Jan 2026, 19:00"
+        date_time_pattern = r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})[,\s]+(\d{1,2}:\d{2})'
+        date_matches = re.findall(date_time_pattern, full_text, re.IGNORECASE)
 
-        # Deduplicate dates
+        # Deduplicate
         unique_dates = []
         seen = set()
         for d in date_matches:
@@ -150,14 +334,13 @@ class MaerskParser(CarrierParser):
                 seen.add(key)
                 unique_dates.append(d)
 
-        # Pair dates (ETD, ETA)
+        # Pair dates
         date_pairs = []
         for i in range(0, len(unique_dates), 2):
             etd = f"{unique_dates[i][0]}, {unique_dates[i][1]}"
             eta = f"{unique_dates[i+1][0]}, {unique_dates[i+1][1]}" if i+1 < len(unique_dates) else None
             date_pairs.append((etd, eta))
 
-        # Build schedules
         for i, voyage in enumerate(vessels.keys()):
             etd, eta = date_pairs[i] if i < len(date_pairs) else (None, None)
             schedules.append(Schedule(
@@ -169,6 +352,20 @@ class MaerskParser(CarrierParser):
             ))
 
         return schedules
+
+    def _normalize_date(self, date_str: str) -> str:
+        """Normalize date format: '18Jan.2026' -> '18 Jan 2026'"""
+        if not date_str:
+            return None
+        # Remove dots, add spaces
+        date_str = re.sub(r'\.', ' ', date_str)
+        # Fix spacing: "18Jan" -> "18 Jan"
+        date_str = re.sub(r'(\d{1,2})(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', r'\1 \2', date_str, flags=re.IGNORECASE)
+        # Fix spacing: "Jan2026" -> "Jan 2026"
+        date_str = re.sub(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{4})', r'\1 \2', date_str, flags=re.IGNORECASE)
+        # Clean multiple spaces
+        date_str = re.sub(r'\s+', ' ', date_str).strip()
+        return date_str
 
 
 class CMAParser(CarrierParser):
