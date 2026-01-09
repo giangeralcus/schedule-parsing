@@ -7,7 +7,8 @@ import sys
 from datetime import datetime
 
 # Add project to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_DIR)
 
 from core.parsers import parse_schedules, get_carrier_from_filename, detect_carrier
 from formatters.output import format_table, format_email, save_output
@@ -31,7 +32,7 @@ def test_screenshot_discovery():
     """Test 1: Check what screenshot files exist"""
     print_section("TEST 1: Screenshot Discovery")
 
-    screenshots_dir = "C:\\Users\\giang\\Desktop\\SCHEDULE\\1_screenshots"
+    screenshots_dir = os.path.join(PROJECT_DIR, "1_screenshots")
 
     if not os.path.exists(screenshots_dir):
         print(f"[ERROR] Screenshots directory not found: {screenshots_dir}")
@@ -71,7 +72,7 @@ def test_parse_screenshot(filename):
     """Test 3: Parse a screenshot and verify outputs"""
     print_section(f"TEST 3: Parsing Screenshot - {filename}")
 
-    screenshots_dir = "C:\\Users\\giang\\Desktop\\SCHEDULE\\1_screenshots"
+    screenshots_dir = os.path.join(PROJECT_DIR, "1_screenshots")
     filepath = os.path.join(screenshots_dir, filename)
 
     if not os.path.exists(filepath):
@@ -124,7 +125,7 @@ def test_parse_screenshot(filename):
 
     # Step 7: Save to file
     print_subsection("STEP 7: Save to File")
-    output_dir = "C:\\Users\\giang\\Desktop\\SCHEDULE\\test_output"
+    output_dir = os.path.join(PROJECT_DIR, "test_output")
     os.makedirs(output_dir, exist_ok=True)
 
     saved_path = save_output(schedules, output_dir, carrier)

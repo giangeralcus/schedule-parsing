@@ -1,6 +1,5 @@
 """
 Test script for output formatting functions
-DO NOT COMMIT - TEMPORARY TEST FILE
 """
 import sys
 import os
@@ -299,10 +298,10 @@ def test_long_vessel_names():
     print(result)
     print()
 
-    # Verify truncation
+    # Verify truncation - table width is 78 chars
     lines = result.split('\n')
     for line in lines:
-        assert len(line) <= 71, f"Line too long: {len(line)} chars"
+        assert len(line) <= 78, f"Line too long: {len(line)} chars (max 78)"
 
     print("[PASS] Long vessel names test PASSED")
     print("  Truncation working correctly")
