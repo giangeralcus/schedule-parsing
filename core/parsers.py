@@ -727,13 +727,14 @@ PARSERS = [
 ]
 
 
-def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -> List[Schedule]:
+def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None, use_llm_fallback: bool = True) -> List[Schedule]:
     """
     Parse schedules using appropriate carrier parser
 
     Args:
         text_lines: OCR extracted text lines
         carrier_hint: Optional carrier name hint
+        use_llm_fallback: Use LLM as fallback when regex fails (default: True)
 
     Returns:
         List of Schedule objects
@@ -763,6 +764,12 @@ def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -
                     used_parser = parser.name
                     break
 
+    # LLM Fallback: If regex parsing failed, try LLM extraction
+    if not schedules and use_llm_fallback:
+        schedules = _llm_fallback_parse(text_lines, carrier_hint)
+        if schedules:
+            used_parser = "LLM (Qwen2.5)"
+
     # Validate and fix dates (swap if ETD > ETA)
     for schedule in schedules:
         schedule.swap_dates_if_needed()
@@ -775,3 +782,42 @@ def parse_schedules(text_lines: List[str], carrier_hint: Optional[str] = None) -
         logger.warning(f"No schedules parsed from {len(text_lines)} lines")
 
     return schedules
+
+
+def _llm_fallback_parse(text_lines: List[str], carrier_hint: Optional[str] = None) -> List[Schedule]:
+    """
+    Fallback parser using LLM (Qwen2.5 via Ollama)
+
+    Called when regex-based parsing fails to extract schedules.
+    """
+    try:
+        from processors.llm import LLMProcessor
+        llm = LLMProcessor()
+
+        if not llm.is_available():
+            logger.debug("LLM fallback not available (Ollama not running or model not loaded)")
+            return []
+
+        logger.info("Regex parsing failed, trying LLM fallback...")
+        llm_results = llm.extract_schedules(text_lines, carrier_hint)
+
+        # Convert LLM dict results to Schedule objects
+        schedules = []
+        for result in llm_results:
+            schedules.append(Schedule(
+                vessel=result.get('vessel', 'TBA'),
+                voyage=result.get('voyage', '-'),
+                etd=result.get('etd'),
+                eta=result.get('eta'),
+                carrier=carrier_hint,
+                confidence=0.8  # LLM results have slightly lower confidence
+            ))
+
+        return schedules
+
+    except ImportError:
+        logger.debug("LLM processor not available")
+        return []
+    except Exception as e:
+        logger.error(f"LLM fallback failed: {e}")
+        return []
